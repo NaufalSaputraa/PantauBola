@@ -157,7 +157,7 @@ class UnderstatScraper:
 
     def scrape_and_update_xg(self, league_code, season_year):
         """
-        Mengambil data xG dari Understat dan menyimpannya ke Supabase untuk liga & musim tertentu.
+        Mengambil data xG dan statistik detail dari Understat dan menyimpannya ke Supabase untuk liga & musim tertentu.
         """
         understat_league = LEAGUE_MAP.get(league_code)
         if not understat_league:
@@ -191,6 +191,22 @@ class UnderstatScraper:
             print(f"Gagal men-decode JSON datesData dari Understat: {e}")
             return
 
+        # Ekstrak data detail tim (teamsData) secara aman (Regex Safety)
+        teams_data = {}
+        try:
+            teams_match = re.search(r"var teamsData\s*=\s*JSON\.parse\('([^']+)'\)", html)
+            if teams_match:
+                escaped_teams_json = teams_match.group(1)
+                bytes_teams_str = escaped_teams_json.encode('ascii')
+                decoded_teams_bytes, _ = codecs.escape_decode(bytes_teams_str)
+                teams_json_str = decoded_teams_bytes.decode('utf-8')
+                teams_data = json.loads(teams_json_str)
+                print(f"Berhasil mengekstrak data tim taktis (teamsData) dari Understat.")
+            else:
+                print("WARNING: Gagal menemukan teamsData di HTML Understat. Beberapa statistik detail akan diabaikan.")
+        except Exception as e:
+            print(f"WARNING: Error saat mengekstrak teamsData dari Understat: {e}. Melanjutkan tanpa statistik detail.")
+
         print(f"Berhasil memuat {len(understat_matches)} pertandingan dari Understat.")
 
         # Ambil daftar nama unik klub dari Understat
@@ -215,9 +231,9 @@ class UnderstatScraper:
             else:
                 print(f"  [!] Gagal mencocokkan tim DB '{t['name']}' dengan tim Understat mana pun.")
 
-        # Ambil matches FINISHED dari Supabase untuk di-update xG-nya
+        # Ambil matches FINISHED dari Supabase untuk di-update xG & stats detailnya
         db_matches = self.db.client.table("matches") \
-            .select("id, home_team_id, away_team_id, home_xg, away_xg") \
+            .select("id, home_team_id, away_team_id, home_xg, away_xg, home_shots, away_shots, home_shots_on_target, away_shots_on_target, home_deep, away_deep, home_ppda, away_ppda") \
             .eq("league", league_code) \
             .eq("status", "FINISHED") \
             .execute().data
@@ -226,42 +242,83 @@ class UnderstatScraper:
             print(f"Tidak ada pertandingan FINISHED di database untuk liga {league_code}.")
             return
 
-        # Indexing matches dari Understat untuk pencarian cepat: (home_team, away_team) -> xG data
+        # Indexing matches dari teamsData untuk pencarian cepat: match_id -> stats dict
+        match_stats = {}
+        if teams_data:
+            try:
+                for team_id, team_info in teams_data.items():
+                    for m_history in team_info.get("history", []):
+                        mid = m_history.get("id")
+                        is_home = m_history.get("h_a") == "h"
+                        prefix = "home_" if is_home else "away_"
+                        
+                        if mid not in match_stats:
+                            match_stats[mid] = {}
+                            
+                        # Konversi data ke tipe data integer/float
+                        match_stats[mid][prefix + "shots"] = int(m_history.get("shots", 0))
+                        match_stats[mid][prefix + "shots_on_target"] = int(m_history.get("shots_on_target", 0))
+                        match_stats[mid][prefix + "deep"] = int(m_history.get("deep", 0))
+                        
+                        # PPDA = att / def (Semakin kecil = pressing semakin agresif)
+                        ppda_info = m_history.get("ppda", {})
+                        att = float(ppda_info.get("att", 0))
+                        deff = float(ppda_info.get("def", 0))
+                        match_stats[mid][prefix + "ppda"] = round(att / deff, 2) if deff > 0 else 0.0
+            except Exception as e:
+                print(f"WARNING: Gagal memproses statistik detail dari teamsData: {e}")
+
+        # Indexing matches dari Understat untuk pencarian cepat: (home_team, away_team) -> xG & detail data
         understat_index = {}
         for um in understat_matches:
             if not um.get("isResult", False):
                 continue
             home_title = um["h"]["title"]
             away_title = um["a"]["title"]
+            mid = um["id"]
             
             # Format xG di Understat bertipe string, kita ubah ke float
             home_xg = float(um["xG"]["h"]) if um.get("xG", {}).get("h") else None
             away_xg = float(um["xG"]["a"]) if um.get("xG", {}).get("a") else None
             
-            understat_index[(home_title, away_title)] = (home_xg, away_xg)
+            stats = {
+                "home_xg": round(home_xg, 2) if home_xg is not None else None,
+                "away_xg": round(away_xg, 2) if away_xg is not None else None,
+            }
+            
+            # Hubungkan dengan detail stats dari teamsData
+            if mid in match_stats:
+                stats.update(match_stats[mid])
+                
+            understat_index[(home_title, away_title)] = stats
 
-        # Proses update xG ke Supabase
+        # Proses update xG & detail stats ke Supabase
         update_count = 0
         for m in db_matches:
-            # Ambil nama Understat berdasarkan ID tim home/away
             u_home = team_id_to_understat.get(m["home_team_id"])
             u_away = team_id_to_understat.get(m["away_team_id"])
 
             if not u_home or not u_away:
                 continue
 
-            # Cari data xG di Understat index
-            xg_data = understat_index.get((u_home, u_away))
-            if xg_data:
-                home_xg, away_xg = xg_data
-                
-                # Hanya update jika nilai xG di DB berbeda (atau masih NULL)
-                # Kita batasi 2 digit desimal dibelakang koma
-                home_xg_rounded = round(home_xg, 2) if home_xg is not None else None
-                away_xg_rounded = round(away_xg, 2) if away_xg is not None else None
+            # Cari data stats di Understat index
+            stats_data = understat_index.get((u_home, u_away))
+            if stats_data:
+                payload = {}
+                for col in [
+                    "home_xg", "away_xg", 
+                    "home_shots", "away_shots", 
+                    "home_shots_on_target", "away_shots_on_target", 
+                    "home_deep", "away_deep", 
+                    "home_ppda", "away_ppda"
+                ]:
+                    val = stats_data.get(col)
+                    # Bandingkan dengan data saat ini di DB, jika berbeda masukkan ke payload
+                    if m.get(col) != val:
+                        payload[col] = val
 
-                if m["home_xg"] != home_xg_rounded or m["away_xg"] != away_xg_rounded:
-                    self.db.update_match_xg(m["id"], home_xg_rounded, away_xg_rounded)
+                if payload:
+                    self.db.update_match_stats(m["id"], payload)
                     update_count += 1
 
-        print(f"Selesai memproses liga {league_code}. Berhasil memperbarui {update_count} data xG di Supabase.")
+        print(f"Selesai memproses liga {league_code}. Berhasil memperbarui {update_count} data statistik di Supabase.")

@@ -145,6 +145,13 @@ def run_pipeline():
                 home_form = get_team_form_string(home_id, home_recent)
                 away_form = get_team_form_string(away_id, away_recent)
                 
+                # Hitung rata-rata xG historis tim kandang/tandang
+                home_xg_list = [m.get("home_xg") for m in finished if m.get("home_team_id") == home_id and m.get("home_xg") is not None]
+                away_xg_list = [m.get("away_xg") for m in finished if m.get("away_team_id") == away_id and m.get("away_xg") is not None]
+                
+                home_avg_xg = round(sum(home_xg_list) / len(home_xg_list), 2) if home_xg_list else None
+                away_avg_xg = round(sum(away_xg_list) / len(away_xg_list), 2) if away_xg_list else None
+                
                 # Rank default jika klasemen kosong
                 home_rank = ranks.get(home_id, 10)
                 away_rank = ranks.get(away_id, 10)
@@ -162,7 +169,9 @@ def run_pipeline():
                     "draw_prob": poisson_results["draw_prob"],
                     "away_prob": poisson_results["away_prob"],
                     "poisson_home_score": poisson_results["predicted_home_score"],
-                    "poisson_away_score": poisson_results["predicted_away_score"]
+                    "poisson_away_score": poisson_results["predicted_away_score"],
+                    "home_avg_xg": home_avg_xg,
+                    "away_avg_xg": away_avg_xg
                 }
                 
                 # D. Picu analisis taktis AI Gemini

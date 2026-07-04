@@ -37,6 +37,14 @@ export interface Match {
   away_team?: Team; // Hubungan join Supabase
   home_xg?: number | null;
   away_xg?: number | null;
+  home_shots?: number | null;
+  away_shots?: number | null;
+  home_shots_on_target?: number | null;
+  away_shots_on_target?: number | null;
+  home_deep?: number | null;
+  away_deep?: number | null;
+  home_ppda?: number | null;
+  away_ppda?: number | null;
   ai_predictions?: AIPrediction | null; // Hubungan join Supabase
 }
 

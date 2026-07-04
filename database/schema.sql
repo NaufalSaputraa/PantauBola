@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS matches (
     away_score SMALLINT, -- Bernilai NULL jika belum tanding
     home_xg NUMERIC(4,2), -- Nilai Expected Goals home
     away_xg NUMERIC(4,2), -- Nilai Expected Goals away
+    home_shots SMALLINT, -- Jumlah tembakan home
+    away_shots SMALLINT, -- Jumlah tembakan away
+    home_shots_on_target SMALLINT, -- Tembakan tepat sasaran home
+    away_shots_on_target SMALLINT, -- Tembakan tepat sasaran away
+    home_deep SMALLINT, -- Umpan sukses ke area penalti home
+    away_deep SMALLINT, -- Umpan sukses ke area penalti away
+    home_ppda NUMERIC(5,2), -- Rasio PPDA home
+    away_ppda NUMERIC(5,2), -- Rasio PPDA away
     status VARCHAR(20) DEFAULT 'SCHEDULED', -- Status: SCHEDULED, LIVE, FINISHED, POSTPONED
     league VARCHAR(50) NOT NULL,
     matchday SMALLINT,

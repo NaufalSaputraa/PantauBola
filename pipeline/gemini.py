@@ -52,6 +52,9 @@ class GeminiClient:
             "poisson_away_score": int
         }
         """
+        home_xg_str = f"{match_info['home_avg_xg']:.2f}" if match_info.get("home_avg_xg") is not None else "N/A"
+        away_xg_str = f"{match_info['away_avg_xg']:.2f}" if match_info.get("away_avg_xg") is not None else "N/A"
+
         prompt = f"""
         Buat analisis taktis pertandingan berikut:
         Liga: {match_info['league']}
@@ -60,10 +63,12 @@ class GeminiClient:
         Statistik Tim Kandang:
         - Posisi Klasemen: {match_info['home_rank']}
         - Tren 5 Laga Terakhir: {match_info['home_form']}
+        - Rata-rata Expected Goals (xG) Historis: {home_xg_str}
         
         Statistik Tim Tandang:
         - Posisi Klasemen: {match_info['away_rank']}
         - Tren 5 Laga Terakhir: {match_info['away_form']}
+        - Rata-rata Expected Goals (xG) Historis: {away_xg_str}
         
         Kalkulasi Matematis Poisson Win-Probability:
         - Peluang {match_info['home_team']} Menang: {match_info['home_prob']}%
@@ -72,7 +77,7 @@ class GeminiClient:
         - Estimasi Skor Poisson: {match_info['poisson_home_score']} - {match_info['poisson_away_score']}
         
         Instruksi Penting:
-        - Analisis taktis harus menyelaraskan kalkulasi Poisson dengan tren terbaru tim.
+        - Analisis taktis harus menyelaraskan kalkulasi Poisson dengan tren terbaru tim dan performa penciptaan peluang (xG).
         - Tulis ulasan analisis maksimal 3 kalimat dalam bahasa Indonesia kasual gaul bola.
         - Tentukan 3 faktor kunci kemenangan.
         """

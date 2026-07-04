@@ -33,14 +33,24 @@ const getMockMatchDetail = (id: string): Match => {
     id: parseInt(id) || 4001,
     home_team_id: 101,
     away_team_id: 103,
-    match_date: new Date(Date.now() + 86400000 * 2).toISOString(),
-    home_score: null,
-    away_score: null,
-    status: 'SCHEDULED',
+    match_date: new Date(Date.now() - 86400000 * 2).toISOString(), // Selesai
+    home_score: 2,
+    away_score: 1,
+    status: 'FINISHED',
     league: 'PL',
     matchday: 29,
     home_team: { id: 101, name: 'Arsenal', logo_url: 'https://crests.football-data.org/57.png', league: 'PL' },
     away_team: { id: 103, name: 'Manchester City', logo_url: 'https://crests.football-data.org/65.png', league: 'PL' },
+    home_xg: 1.84,
+    away_xg: 1.12,
+    home_shots: 14,
+    away_shots: 8,
+    home_shots_on_target: 6,
+    away_shots_on_target: 3,
+    home_deep: 10,
+    away_deep: 5,
+    home_ppda: 8.50,
+    away_ppda: 12.30,
     ai_predictions: {
       id: 501,
       match_id: parseInt(id) || 4001,
@@ -59,6 +69,56 @@ const getMockMatchDetail = (id: string): Match => {
     }
   };
 };
+
+interface StatRowProps {
+  label: string;
+  homeVal: string | number;
+  awayVal: string | number;
+  homePercent: number;
+  isLowerBetter?: boolean;
+}
+
+function StatRow({ label, homeVal, awayVal, homePercent, isLowerBetter = false }: StatRowProps) {
+  const homeValNum = Number(homeVal);
+  const awayValNum = Number(awayVal);
+  
+  // Menentukan pemenang baris
+  let isHomeWinner = homeValNum > awayValNum;
+  if (isLowerBetter) {
+    isHomeWinner = homeValNum < awayValNum;
+  }
+  const isDraw = homeValNum === awayValNum;
+
+  return (
+    <div className="flex flex-col gap-1.5 w-full">
+      <div className="flex justify-between items-center text-xs font-semibold px-1">
+        <span className={`${isHomeWinner && !isDraw ? 'text-success font-bold text-sm' : 'text-secondary'}`}>
+          {homeVal}
+        </span>
+        <span className="text-secondary uppercase font-bold tracking-wider text-[10px]">
+          {label}
+        </span>
+        <span className={`${!isHomeWinner && !isDraw ? 'text-danger font-bold text-sm' : 'text-secondary'}`}>
+          {awayVal}
+        </span>
+      </div>
+      
+      {/* Visual Bar Comparison */}
+      <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden flex">
+        <div 
+          className="bg-success h-full transition-all duration-500"
+          style={{ width: `${homePercent}%` }}
+        />
+        <div 
+          className="bg-neutral-300 dark:bg-neutral-700 h-full w-[2px]" 
+        />
+        <div 
+          className="bg-danger h-full transition-all duration-500 flex-1"
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function MatchDetailPage() {
   const { id } = useParams() as { id: string };
@@ -390,6 +450,64 @@ export default function MatchDetailPage() {
                   />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </section>
+        )}
+
+        {/* ROW 5: STATISTIK DETAIL PERTANDINGAN (Hanya untuk Laga FINISHED dengan data stat) */}
+        {isFinished && match.home_shots !== null && match.home_shots !== undefined && (
+          <section className="col-span-1 md:col-span-3 bg-card-bg-custom border border-border-custom rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5 border-b border-border-custom pb-3 mb-6">
+              <Activity className="w-4.5 h-4.5 text-primary" />
+              Statistik Rinci Pertandingan
+            </h3>
+            
+            <div className="flex flex-col gap-6 max-w-2xl mx-auto py-2">
+              {/* xG Row */}
+              <StatRow 
+                label="Expected Goals (xG)" 
+                homeVal={Number(match.home_xg || 0).toFixed(2)} 
+                awayVal={Number(match.away_xg || 0).toFixed(2)} 
+                homePercent={((match.home_xg || 0) / (((match.home_xg || 0) + (match.away_xg || 0)) || 1)) * 100}
+              />
+              
+              {/* Shots Row */}
+              <StatRow 
+                label="Total Tembakan" 
+                homeVal={match.home_shots || 0} 
+                awayVal={match.away_shots || 0} 
+                homePercent={((match.home_shots || 0) / (((match.home_shots || 0) + (match.away_shots || 0)) || 1)) * 100}
+              />
+              
+              {/* Shots on Target Row */}
+              <StatRow 
+                label="Tembakan Tepat Sasaran" 
+                homeVal={match.home_shots_on_target || 0} 
+                awayVal={match.away_shots_on_target || 0} 
+                homePercent={((match.home_shots_on_target || 0) / (((match.home_shots_on_target || 0) + (match.away_shots_on_target || 0)) || 1)) * 100}
+              />
+              
+              {/* Deep Passes Row */}
+              <StatRow 
+                label="Umpan ke Area Bahaya (Deep Passes)" 
+                homeVal={match.home_deep || 0} 
+                awayVal={match.away_deep || 0} 
+                homePercent={((match.home_deep || 0) / (((match.home_deep || 0) + (match.away_deep || 0)) || 1)) * 100}
+              />
+              
+              {/* PPDA Row */}
+              <StatRow 
+                label="Pressing Intensity (PPDA)" 
+                homeVal={Number(match.home_ppda || 0).toFixed(1)} 
+                awayVal={Number(match.away_ppda || 0).toFixed(1)} 
+                // PPDA Terbalik secara visual: PPDA lebih kecil = pressing lebih intens = bar lebih panjang
+                homePercent={((match.away_ppda || 0) / (((match.home_ppda || 0) + (match.away_ppda || 0)) || 1)) * 100}
+                isLowerBetter={true}
+              />
+              
+              <div className="text-[10px] text-center text-secondary font-medium mt-2 bg-neutral-50 dark:bg-neutral-900/30 p-2.5 rounded-lg border border-border-custom max-w-md mx-auto leading-normal">
+                ℹ️ <strong>PPDA (Passes Allowed per Defensive Action):</strong> Semakin rendah angka PPDA, pertahanan tim semakin agresif melakukan pressing sebelum lawan melepaskan umpan.
+              </div>
             </div>
           </section>
         )}

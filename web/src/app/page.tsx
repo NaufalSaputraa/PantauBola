@@ -12,7 +12,8 @@ import {
   ChevronRight, 
   Tv,
   Loader2,
-  ChevronDown
+  ChevronDown,
+  Activity
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -154,6 +155,15 @@ export default function Home() {
           <p className="text-secondary text-sm mt-1">
             Analitik hasil tanding liga top Eropa dengan kecerdasan AI.
           </p>
+          <div className="flex items-center gap-4 mt-3">
+            <Link 
+              href="/simulator"
+              className="px-3.5 py-1.5 bg-primary text-white text-xs font-semibold rounded-full hover:bg-primary/95 transition-all flex items-center gap-1 cursor-pointer shadow-sm shadow-primary/20"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              Buka AI Simulator
+            </Link>
+          </div>
         </div>
 
         {/* League Selector (Apple Muted Button Style) */}

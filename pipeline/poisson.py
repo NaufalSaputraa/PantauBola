@@ -27,41 +27,44 @@ def calculate_poisson_probabilities(home_team_id, away_team_id, finished_matches
             "predicted_away_score": 1
         }
 
-    # Hitung total gol dan rata-rata gol liga
-    total_home_goals = 0
-    total_away_goals = 0
+    # Hitung total expected goals/gol dan rata-rata liga
+    total_home_val = 0.0
+    total_away_val = 0.0
     num_matches = len(finished_matches)
 
     for m in finished_matches:
-        total_home_goals += m.get("home_score") or 0
-        total_away_goals += m.get("away_score") or 0
+        total_home_val += m.get("home_xg") if m.get("home_xg") is not None else (m.get("home_score") or 0)
+        total_away_val += m.get("away_xg") if m.get("away_xg") is not None else (m.get("away_score") or 0)
 
-    avg_league_home_goals = total_home_goals / num_matches
-    avg_league_away_goals = total_away_goals / num_matches
+    avg_league_home_goals = total_home_val / num_matches
+    avg_league_away_goals = total_away_val / num_matches
 
-    # 2. Hitung statistik gol untuk masing-masing tim
+    # 2. Hitung statistik untuk masing-masing tim
     # Statistik Home Team (saat bermain di kandang)
     home_matches_played = 0
-    home_goals_scored = 0
-    home_goals_conceded = 0
+    home_goals_scored = 0.0
+    home_goals_conceded = 0.0
 
     # Statistik Away Team (saat bermain di tandang)
     away_matches_played = 0
-    away_goals_scored = 0
-    away_goals_conceded = 0
+    away_goals_scored = 0.0
+    away_goals_conceded = 0.0
 
     for m in finished_matches:
+        home_val = m.get("home_xg") if m.get("home_xg") is not None else (m.get("home_score") or 0)
+        away_val = m.get("away_xg") if m.get("away_xg") is not None else (m.get("away_score") or 0)
+
         # Cari laga kandang Home Team
         if m.get("home_team_id") == home_team_id:
             home_matches_played += 1
-            home_goals_scored += m.get("home_score") or 0
-            home_goals_conceded += m.get("away_score") or 0
+            home_goals_scored += home_val
+            home_goals_conceded += away_val
             
         # Cari laga tandang Away Team
         if m.get("away_team_id") == away_team_id:
             away_matches_played += 1
-            away_goals_scored += m.get("away_score") or 0
-            away_goals_conceded += m.get("home_score") or 0
+            away_goals_scored += away_val
+            away_goals_conceded += home_val
 
     # Fallback jika tim belum bermain kandang/tandang (misal awal musim)
     avg_home_scored = (home_goals_scored / home_matches_played) if home_matches_played > 0 else avg_league_home_goals

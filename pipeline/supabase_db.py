@@ -38,12 +38,12 @@ class SupabaseDB:
         response = self.client.table("matches").upsert(matches_list).execute()
         return response.data
 
-    def update_match_xg(self, match_id, home_xg, away_xg):
+    def update_match_stats(self, match_id, stats_dict):
         """
-        Update nilai xG untuk match tertentu.
+        Update statistik detail (xG, Shots, PPDA, dll) untuk match tertentu.
         """
         response = self.client.table("matches") \
-            .update({"home_xg": home_xg, "away_xg": away_xg}) \
+            .update(stats_dict) \
             .eq("id", match_id) \
             .execute()
         return response.data
