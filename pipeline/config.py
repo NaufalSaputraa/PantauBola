@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 
 # Muat file .env dari folder root proyek jika ada
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
 # Supabase Credentials
 SUPABASE_URL = os.getenv("SUPABASE_URL")
