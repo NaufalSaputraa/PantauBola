@@ -22,7 +22,7 @@ class GeminiClient:
         
         # Inisialisasi client baru google-genai
         self.client = genai.Client(api_key=GEMINI_API_KEY)
-        self.model_name = 'gemini-2.5-flash'  # Model terbaru Google Gemini yang sangat stabil dan pintar
+        self.model_name = 'gemini-3.5-flash'  # Model terbaru Google Gemini versi 3.5 yang sangat cepat dan cerdas
         
         # Konfigurasi system instruction
         self.system_instruction = (
