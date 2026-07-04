@@ -1,5 +1,6 @@
 import json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 from typing import List
 from pipeline.config import GEMINI_API_KEY
@@ -18,39 +19,22 @@ class GeminiClient:
     def __init__(self):
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY harus dikonfigurasi di env.")
-        genai.configure(api_key=GEMINI_API_KEY)
         
-        # Konfigurasi system instruction sesuai standar PRD
-        system_instruction = (
+        # Inisialisasi client baru google-genai
+        self.client = genai.Client(api_key=GEMINI_API_KEY)
+        self.model_name = 'gemini-2.5-flash'  # Model terbaru Google Gemini yang sangat stabil dan pintar
+        
+        # Konfigurasi system instruction
+        self.system_instruction = (
             "Kamu adalah analis sepak bola profesional yang objektif dan berbasis data. "
             "Tugasmu adalah memberikan analisis singkat mengenai pertandingan mendatang berdasarkan data statistik yang diberikan. "
             "Gunakan gaya bahasa kasual, taktis, dan populer di kalangan pecinta sepak bola Indonesia (contoh: 'on-fire', 'clean sheet', 'counter-attack'). "
             "Hindari kalimat pembuka atau penutup yang tidak perlu. Langsung berikan analisis pada poin yang diminta."
         )
-        
-        self.model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
-            system_instruction=system_instruction
-        )
 
     def generate_match_analysis(self, match_info):
         """
-        Menghasilkan ulasan AI taktis menggunakan Gemini API.
-        
-        match_info: dict berisi data {
-            "home_team": str,
-            "away_team": str,
-            "league": str,
-            "home_rank": int,
-            "away_rank": int,
-            "home_form": str,
-            "away_form": str,
-            "home_prob": float,
-            "draw_prob": float,
-            "away_prob": float,
-            "poisson_home_score": int,
-            "poisson_away_score": int
-        }
+        Menghasilkan ulasan AI taktis menggunakan Google GenAI SDK terbaru.
         """
         home_xg_str = f"{match_info['home_avg_xg']:.2f}" if match_info.get("home_avg_xg") is not None else "N/A"
         away_xg_str = f"{match_info['away_avg_xg']:.2f}" if match_info.get("away_avg_xg") is not None else "N/A"
@@ -83,12 +67,15 @@ class GeminiClient:
         """
         
         try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
+            # Gunakan generate_content client baru
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_instruction,
                     response_mime_type="application/json",
                     response_schema=GeminiAnalysis,
-                    temperature=0.2, # Menjaga respon konsisten dan objektif
+                    temperature=0.2
                 )
             )
             
