@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  /* Premium Apple System Accents */
+  --color-primary: #0071e3;         /* Apple Blue */
+  --color-success: #34c759;         /* Apple Green untuk menang */
+  --color-danger: #ff3b30;          /* Apple Red untuk kalah */
+  
+  /* Bind Tailwind colors to CSS custom properties */
+  --color-background-custom: var(--background);
+  --color-card-bg-custom: var(--card-bg);
+  --color-text-custom: var(--foreground);
+  --color-border-custom: var(--border);
+
+  /* Typography Fallbacks */
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+:root {
+  --background: #f7f7f7;            /* Matte off-white */
+  --card-bg: #ffffff;               /* Pure white */
+  --foreground: #1d1d1f;            /* Apple Charcoal */
+  --border: #e8e8ed;                /* Soft gray */
+}
+
+/* Media query for dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #121212;          /* Material dark background */
+    --card-bg: #1c1c1e;             /* Apple System Gray 6 */
+    --foreground: #e8e8ed;          /* Muted white */
+    --border: #2c2c2e;              /* Dark border */
+  }
+}
+
+/* Explicit class for manual dark mode toggle support */
+.dark {
+  --background: #121212;
+  --card-bg: #1c1c1e;
+  --foreground: #e8e8ed;
+  --border: #2c2c2e;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+/* Apple glassmorphism utility classes */
+.glass {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.72);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dark .glass {
+  background: rgba(18, 18, 18, 0.72);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}

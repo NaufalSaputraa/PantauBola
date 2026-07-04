@@ -1,0 +1,195 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import time
+from pipeline.config import SUPPORTED_LEAGUES, API_DELAY_SECONDS
+from pipeline.football_api import FootballAPI
+from pipeline.supabase_db import SupabaseDB
+from pipeline.poisson import calculate_poisson_probabilities
+from pipeline.gemini import GeminiClient
+from pipeline.understat_scraper import UnderstatScraper
+
+def get_team_form_string(team_id, recent_matches):
+    """
+    Mengubah list pertandingan terakhir menjadi string form, misal: 'W-D-L-W-W'
+    """
+    form_list = []
+    # Urutkan dari terlama ke terbaru
+    for match in reversed(recent_matches):
+        home_id = match.get("home_team_id")
+        away_id = match.get("away_team_id")
+        home_score = match.get("home_score")
+        away_score = match.get("away_score")
+        
+        # Lewati jika skor belum ada
+        if home_score is None or away_score is None:
+            continue
+            
+        if home_id == team_id:
+            if home_score > away_score:
+                form_list.append("W")
+            elif home_score == away_score:
+                form_list.append("D")
+            else:
+                form_list.append("L")
+        elif away_id == team_id:
+            if away_score > home_score:
+                form_list.append("W")
+            elif away_score == home_score:
+                form_list.append("D")
+            else:
+                form_list.append("L")
+                
+    return "-".join(form_list) if form_list else "N/A"
+
+def run_pipeline():
+    print("=== MEMULAI PIPELINE DATA PANTAUBOLA ===")
+    
+    # Inisialisasi API, DB, dan Gemini
+    try:
+        api = FootballAPI()
+        db = SupabaseDB()
+        gemini = GeminiClient()
+    except Exception as e:
+        print(f"Error inisialisasi client: {e}")
+        return
+
+    for league_code, league_name in SUPPORTED_LEAGUES.items():
+        print(f"\nProcessing {league_name} ({league_code})...")
+        
+        # 1. Tarik Data Tim & Klasemen dari API
+        try:
+            teams, standings = api.get_standings_and_teams(league_code)
+            print(f"Berhasil menarik {len(teams)} tim dan data klasemen.")
+            
+            # Simpan ke Database
+            db.upsert_teams(teams)
+            db.upsert_standings(standings)
+            print("Data tim dan klasemen berhasil di-upsert ke Supabase.")
+        except Exception as e:
+            print(f"Gagal memproses data tim & klasemen liga {league_code}: {e}")
+            continue
+            
+        # 2. Tarik Seluruh Matchday Liga dari API
+        try:
+            matches, season_year = api.get_matches(league_code)
+            print(f"Berhasil menarik {len(matches)} data pertandingan musim ini (Tahun Musim: {season_year}).")
+            
+            # Ambil semua id tim unik dari matches untuk mencegah foreign key violation
+            match_team_ids = set()
+            for m in matches:
+                if m.get("home_team_id"):
+                    match_team_ids.add(m["home_team_id"])
+                if m.get("away_team_id"):
+                    match_team_ids.add(m["away_team_id"])
+            
+            # Cari id tim yang sudah di-upsert tadi
+            existing_team_ids = {t["id"] for t in teams}
+            
+            # Cari id tim baru yang tidak ada di standings tetapi ada di matches
+            missing_team_ids = match_team_ids - existing_team_ids
+            if missing_team_ids:
+                print(f"Menemukan {len(missing_team_ids)} tim dari jadwal matches yang tidak ada di standings. Membuat data dummy...")
+                dummy_teams = []
+                for tid in missing_team_ids:
+                    dummy_teams.append({
+                        "id": tid,
+                        "name": f"Team ID {tid}",
+                        "logo_url": "https://crests.football-data.org/placeholder.png",
+                        "league": league_code
+                    })
+                db.upsert_teams(dummy_teams)
+            
+            # Simpan ke Database
+            db.upsert_matches(matches)
+            print("Data pertandingan berhasil di-upsert ke Supabase.")
+
+            # 2.5 Tarik Data xG Tim dari Understat & Update ke Database
+            try:
+                scraper = UnderstatScraper(db)
+                scraper.scrape_and_update_xg(league_code, season_year)
+            except Exception as e:
+                print(f"Gagal melakukan scraping xG untuk liga {league_code}: {e}")
+        except Exception as e:
+            print(f"Gagal memproses matches liga {league_code}: {e}")
+            continue
+
+        # 3. Proses Prediksi AI untuk Laga Mendatang (SCHEDULED / POSTPONED)
+        try:
+            # Ambil matches yang belum selesai
+            upcoming = db.get_upcoming_matches(league_code, limit=10) # Ambil 10 laga terdekat per liga
+            finished = db.get_finished_matches(league_code, limit=150) # Ambil laga historis untuk hitung Poisson
+            
+            # Cari rank klasemen untuk pemetaan cepat
+            standings_db = db.client.table("standings").select("team_id, position").eq("league", league_code).execute().data
+            ranks = {item["team_id"]: item["position"] for item in standings_db}
+            
+            print(f"Menghitung prediksi untuk {len(upcoming)} pertandingan mendatang...")
+            
+            for match in upcoming:
+                match_id = match["id"]
+                home_id = match["home_team_id"]
+                away_id = match["away_team_id"]
+                home_name = match.get("home_team", {}).get("name", "Home Team")
+                away_name = match.get("away_team", {}).get("name", "Away Team")
+                
+                print(f"  -> Menganalisis {home_name} vs {away_name}...")
+                
+                # A. Hitung Poisson
+                poisson_results = calculate_poisson_probabilities(home_id, away_id, finished)
+                
+                # B. Dapatkan tren form 5 laga terakhir
+                home_recent = db.get_team_recent_matches(home_id, limit=5)
+                away_recent = db.get_team_recent_matches(away_id, limit=5)
+                home_form = get_team_form_string(home_id, home_recent)
+                away_form = get_team_form_string(away_id, away_recent)
+                
+                # Rank default jika klasemen kosong
+                home_rank = ranks.get(home_id, 10)
+                away_rank = ranks.get(away_id, 10)
+                
+                # C. Siapkan payload parameter untuk Gemini
+                match_payload = {
+                    "home_team": home_name,
+                    "away_team": away_name,
+                    "league": league_name,
+                    "home_rank": home_rank,
+                    "away_rank": away_rank,
+                    "home_form": home_form,
+                    "away_form": away_form,
+                    "home_prob": poisson_results["home_prob"],
+                    "draw_prob": poisson_results["draw_prob"],
+                    "away_prob": poisson_results["away_prob"],
+                    "poisson_home_score": poisson_results["predicted_home_score"],
+                    "poisson_away_score": poisson_results["predicted_away_score"]
+                }
+                
+                # D. Picu analisis taktis AI Gemini
+                ai_analysis = gemini.generate_match_analysis(match_payload)
+                
+                # E. Simpan hasil prediksi dan ulasan AI ke database
+                prediction_record = {
+                    "match_id": match_id,
+                    "home_prob": poisson_results["home_prob"],
+                    "draw_prob": poisson_results["draw_prob"],
+                    "away_prob": poisson_results["away_prob"],
+                    "predicted_home_score": ai_analysis["prediksi_skor"]["home"],
+                    "predicted_away_score": ai_analysis["prediksi_skor"]["away"],
+                    "analysis_text": ai_analysis["ulasan_analisis"],
+                    "key_factors": ai_analysis["faktor_kunci"]
+                }
+                
+                db.upsert_prediction(prediction_record)
+                print(f"     [OK] Prediksi berhasil disimpan. Skor AI: {ai_analysis['prediksi_skor']['home']} - {ai_analysis['prediksi_skor']['away']}.")
+                
+                # Delay singkat antar pemanggilan Gemini API untuk keselamatan rate limit
+                time.sleep(1.5)
+                
+        except Exception as e:
+            print(f"Error saat menghitung prediksi liga {league_code}: {e}")
+
+    print("\n=== PIPELINE SELESAI DENGAN SUKSES ===")
+
+if __name__ == "__main__":
+    run_pipeline()

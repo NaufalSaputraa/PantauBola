@@ -1,0 +1,44 @@
+name: PantauBola Data Pipeline
+
+# on:
+#   schedule:
+#     # Solusi A: Berjalan 2 kali seminggu
+#     # 1. Senin malam pukul 23:00 UTC (Selasa 06:00 WIB) - Sync skor weekend + prediksi midweek
+#     - cron: '0 23 * * 1'
+#     # 2. Jumat pagi pukul 06:00 UTC (Jumat 13:00 WIB) - Sync skor midweek + prediksi weekend
+#     - cron: '0 6 * * 5'
+on:
+  workflow_dispatch: # Memungkinkan pemicu manual dari dashboard GitHub (off-season)
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip' # Cache dependencies untuk eksekusi lebih cepat
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipeline/requirements.txt
+
+      - name: Install Scrapling Browser Dependencies
+        run: |
+          python -m pip install playwright
+          playwright install chromium
+
+      - name: Run Pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+        run: |
+          python pipeline/main.py
