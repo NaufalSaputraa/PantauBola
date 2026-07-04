@@ -147,10 +147,10 @@ export default function Home() {
             // Tentukan model name berdasarkan model dominan atau default
             const modelNames: Record<string, string> = {
               'PL': 'Gemini 3.5 Flash',
-              'PD': 'Gemini 2.5 Pro',
+              'PD': 'Gemini 3.1 Pro',
               'SA': 'Gemini 3.1 Flash Lite',
               'BL1': 'Gemini 3.5 Flash',
-              'CL': 'Gemini 2.5 Pro'
+              'CL': 'Gemini 3.1 Pro'
             };
             setModelName(modelNames[activeLeague] || 'Gemini 3.5 Flash');
           } else {
@@ -164,10 +164,10 @@ export default function Home() {
             };
             const modelFallbacks: Record<string, string> = {
               'PL': 'Gemini 3.5 Flash',
-              'PD': 'Gemini 2.5 Pro',
+              'PD': 'Gemini 3.1 Pro',
               'SA': 'Gemini 3.1 Flash Lite',
               'BL1': 'Gemini 3.5 Flash',
-              'CL': 'Gemini 2.5 Pro'
+              'CL': 'Gemini 3.1 Pro'
             };
             setAccuracy(accuracyFallbacks[activeLeague] || '75.0');
             setModelName(modelFallbacks[activeLeague] || 'Gemini 3.5 Flash');
@@ -183,10 +183,10 @@ export default function Home() {
           };
           const modelFallbacks: Record<string, string> = {
             'PL': 'Gemini 3.5 Flash',
-            'PD': 'Gemini 2.5 Pro',
+            'PD': 'Gemini 3.1 Pro',
             'SA': 'Gemini 3.1 Flash Lite',
             'BL1': 'Gemini 3.5 Flash',
-            'CL': 'Gemini 2.5 Pro'
+            'CL': 'Gemini 3.1 Pro'
           };
           setAccuracy(accuracyFallbacks[activeLeague] || '75.0');
           setModelName(modelFallbacks[activeLeague] || 'Gemini 3.5 Flash');

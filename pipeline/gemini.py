@@ -33,8 +33,8 @@ MODEL_CASCADE = [
         "desc": "Model utama — cepat dan cerdas untuk analisis taktis",
     },
     {
-        "name": "gemini-2.5-pro",
-        "label": "Gemini 2.5 Pro",
+        "name": "gemini-3.1-pro",
+        "label": "Gemini 3.1 Pro",
         "desc": "Fallback pertama - model Pro dengan reasoning mendalam",
     },
     {
