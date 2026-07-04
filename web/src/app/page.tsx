@@ -86,13 +86,27 @@ export default function Home() {
         }
 
         // 2. Tarik Upcoming Matches + Predictions
-        const { data: matchesData, error: matchError } = await supabase
+        let { data: matchesData, error: matchError } = await supabase
           .from('matches')
           .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*), ai_predictions(*)')
           .eq('league', activeLeague)
           .in('status', ['SCHEDULED', 'POSTPONED'])
           .order('match_date', { ascending: true })
           .limit(4);
+
+        if (!matchError && (!matchesData || matchesData.length === 0)) {
+          // Fallback jika tidak ada jadwal tanding (karena musim selesai), tampilkan match selesai yang memiliki prediksi
+          const { data: fallbackMatches, error: fError } = await supabase
+            .from('matches')
+            .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*), ai_predictions(*)')
+            .eq('league', activeLeague)
+            .not('ai_predictions', 'is', null)
+            .order('match_date', { ascending: false })
+            .limit(4);
+          if (!fError && fallbackMatches && fallbackMatches.length > 0) {
+            matchesData = fallbackMatches;
+          }
+        }
 
         if (!matchError && matchesData && matchesData.length > 0) {
           const formattedMatches = matchesData.map(m => ({

@@ -85,7 +85,7 @@ class SupabaseDB:
     def get_upcoming_matches(self, league, limit=20):
         """
         Mengambil jadwal pertandingan yang belum dimulai untuk dilakukan kalkulasi prediksi.
-        Status: SCHEDULED
+        Status: SCHEDULED. Jika kosong, ambil pertandingan FINISHED sebagai fallback.
         """
         response = self.client.table("matches") \
             .select("*, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)") \
@@ -94,4 +94,17 @@ class SupabaseDB:
             .order("match_date", desc=False) \
             .limit(limit) \
             .execute()
-        return response.data
+        
+        data = response.data
+        if not data:
+            # Fallback: ambil pertandingan FINISHED terbaru untuk simulasi prediksi
+            response_fallback = self.client.table("matches") \
+                .select("*, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)") \
+                .eq("league", league) \
+                .eq("status", "FINISHED") \
+                .order("match_date", desc=True) \
+                .limit(limit) \
+                .execute()
+            data = response_fallback.data
+            
+        return data
