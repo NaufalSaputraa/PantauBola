@@ -2,7 +2,7 @@
 
 ## Overview
 **PantauBola** adalah platform analitik dan pelacak data sepak bola Eropa. Proyek ini menggunakan arsitektur terpisah (*polyglot architecture*):
-1. **Python Data Pipeline**: Mengambil data dari [Football-Data.org](https://www.football-data.org/), menghitung probabilitas hasil pertandingan menggunakan Distribusi Poisson, memanggil Gemini API (`gemini-1.5-flash`) dalam mode JSON terstruktur untuk ulasan taktis, dan menyimpan hasilnya ke Supabase.
+1. **Python Data Pipeline**: Mengambil data dari [Football-Data.org](https://www.football-data.org/), menghitung probabilitas hasil pertandingan menggunakan Distribusi Poisson, memanggil Gemini API (cascade: `gemini-3.5-flash` → `gemini-2.5-pro` → `gemini-3.1-flash-lite`) dalam mode JSON terstruktur untuk ulasan taktis, dan menyimpan hasilnya ke Supabase.
 2. **Supabase Database**: Menyimpan data tabel `teams`, `matches`, `standings`, dan `ai_predictions` dengan keamanan Row Level Security (RLS) diaktifkan.
 3. **Next.js Web Frontend**: Dashboard modern (TypeScript & Tailwind) yang menyajikan klasemen, jadwal pertandingan, visualisasi data grafik interaktif, dan ulasan taktis AI.
 
@@ -28,7 +28,7 @@ Pipeline data berjalan otomatis menggunakan **GitHub Actions** terjadwal 2 kali 
 
 ## Tech Stack
 - **Database**: Supabase (PostgreSQL)
-- **Data Pipeline**: Python 3.10+, libraries (`requests`, `google-generativeai`, `supabase-py`, `pandas`, `scipy`)
+- **Data Pipeline**: Python 3.10+, libraries (`requests`, `google-genai`, `supabase-py`, `pandas`, `scipy`)
 - **Pipeline Runner**: GitHub Actions (Scheduler)
 - **Web App**: Next.js 15+ (App Router), TypeScript, Tailwind CSS v4, Lucide React, Recharts (visualisasi chart)
 
