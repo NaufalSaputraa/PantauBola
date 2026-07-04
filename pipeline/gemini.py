@@ -16,6 +16,15 @@ class GeminiAnalysis(BaseModel):
     ulasan_analisis: str = Field(description="Maksimal 3 kalimat ulasan taktis mengenai jalannya pertandingan.")
     faktor_kunci: List[str] = Field(description="Maksimal 3 poin faktor utama yang mempengaruhi hasil pertandingan.")
 
+class GeminiMatchPrediction(BaseModel):
+    match_id: int
+    prediksi_skor: SkorPrediksi
+    ulasan_analisis: str = Field(description="Maksimal 3 kalimat ulasan taktis mengenai jalannya pertandingan.")
+    faktor_kunci: List[str] = Field(description="Maksimal 3 poin faktor utama yang mempengaruhi hasil pertandingan.")
+
+class GeminiBatchAnalysis(BaseModel):
+    predictions: List[GeminiMatchPrediction]
+
 # Konfigurasi model cascade: dari yang tercepat ke yang paling ringan
 MODEL_CASCADE = [
     {
@@ -144,3 +153,104 @@ class GeminiClient:
                 "Faktor mental bermain di kandang."
             ]
         }
+
+    def generate_batch_match_analysis(self, matches_payload: List[dict]) -> List[dict]:
+        """
+        Menghasilkan ulasan AI taktis untuk banyak pertandingan sekaligus dalam satu request (Batching)
+        menggunakan sistem fallback multi-model (Cascade).
+        """
+        if not matches_payload:
+            return []
+
+        # Bangun prompt batch
+        prompt_parts = [
+            "Buat analisis taktis untuk daftar pertandingan berikut secara terpisah.\n"
+            "Pastikan Anda menghasilkan satu entri prediksi untuk setiap 'match_id' yang diberikan.\n"
+        ]
+
+        for item in matches_payload:
+            home_xg_str = f"{item['home_avg_xg']:.2f}" if item.get("home_avg_xg") is not None else "N/A"
+            away_xg_str = f"{item['away_avg_xg']:.2f}" if item.get("away_avg_xg") is not None else "N/A"
+            
+            prompt_parts.append(f"""
+---
+Pertandingan ID: {item['match_id']}
+Liga: {item['league']}
+Klub: {item['home_team']} (Kandang) vs {item['away_team']} (Tandang)
+Statistik Tim Kandang:
+- Posisi Klasemen: {item['home_rank']}
+- Tren Form: {item['home_form']}
+- Rata-rata xG Historis: {home_xg_str}
+Statistik Tim Tandang:
+- Posisi Klasemen: {item['away_rank']}
+- Tren Form: {item['away_form']}
+- Rata-rata xG Historis: {away_xg_str}
+Poisson Win-Probability:
+- Peluang {item['home_team']} Menang: {item['home_prob']}%
+- Peluang Seri: {item['draw_prob']}%
+- Peluang {item['away_team']} Menang: {item['away_prob']}%
+- Estimasi Skor Poisson: {item['poisson_home_score']} - {item['poisson_away_score']}
+""")
+
+        prompt = "\n".join(prompt_parts)
+
+        # Coba setiap model secara berurutan (cascade)
+        for i, model in enumerate(self.models):
+            try:
+                response = self.client.models.generate_content(
+                    model=model["name"],
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_instruction,
+                        response_mime_type="application/json",
+                        response_schema=GeminiBatchAnalysis,
+                        temperature=0.2
+                    )
+                )
+                data = json.loads(response.text)
+                
+                # Format output ke list of dictionaries standard
+                predictions = data.get("predictions", [])
+                formatted_predictions = []
+                for p in predictions:
+                    formatted_predictions.append({
+                        "match_id": int(p.get("match_id")),
+                        "prediksi_skor": {
+                            "home": int(p.get("prediksi_skor", {}).get("home")),
+                            "away": int(p.get("prediksi_skor", {}).get("away"))
+                        },
+                        "ulasan_analisis": p.get("ulasan_analisis"),
+                        "faktor_kunci": p.get("faktor_kunci")
+                    })
+                
+                if i > 0:
+                    print(f"  [OK] Berhasil menggunakan fallback batch: {model['label']}")
+                return formatted_predictions
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    print(f"  [WARN] [{model['name']}] Kuota habis (429) saat batch. Cascading ke model berikutnya...")
+                else:
+                    print(f"  [WARN] [{model['name']}] Error batch: {e}")
+                
+                if i < len(self.models) - 1:
+                    time.sleep(RETRY_DELAY_SECONDS)
+
+        # Fallback statis jika semua model gagal
+        print(f"  [FAIL] Semua model gagal untuk batch. Menggunakan fallback statis.")
+        results = []
+        for item in matches_payload:
+            results.append({
+                "match_id": item["match_id"],
+                "prediksi_skor": {
+                    "home": item["poisson_home_score"],
+                    "away": item["poisson_away_score"]
+                },
+                "ulasan_analisis": f"Laga ketat di {item['league']}. {item['home_team']} membawa tren form {item['home_form']} untuk menjamu {item['away_team']} ({item['away_form']}).",
+                "faktor_kunci": [
+                    "Efisiensi pemanfaatan peluang (xG).",
+                    "Disiplin lini belakang.",
+                    "Determinasi perebutan bola di lini tengah."
+                ]
+            })
+        return results

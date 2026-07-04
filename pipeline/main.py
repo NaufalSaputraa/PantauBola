@@ -138,14 +138,14 @@ def run_pipeline():
             
             print(f"Menghitung prediksi untuk {len(upcoming)} pertandingan mendatang...")
             
+            batch_payloads = []
+            
             for match in upcoming:
                 match_id = match["id"]
                 home_id = match["home_team_id"]
                 away_id = match["away_team_id"]
                 home_name = match.get("home_team", {}).get("name", "Home Team")
                 away_name = match.get("away_team", {}).get("name", "Away Team")
-                
-                print(f"  -> Menganalisis {home_name} vs {away_name}...")
                 
                 # A. Hitung Poisson
                 poisson_results = calculate_poisson_probabilities(home_id, away_id, finished)
@@ -168,7 +168,8 @@ def run_pipeline():
                 away_rank = ranks.get(away_id, 10)
                 
                 # C. Siapkan payload parameter untuk Gemini
-                match_payload = {
+                batch_payloads.append({
+                    "match_id": match_id,
                     "home_team": home_name,
                     "away_team": away_name,
                     "league": league_name,
@@ -183,26 +184,35 @@ def run_pipeline():
                     "poisson_away_score": poisson_results["predicted_away_score"],
                     "home_avg_xg": home_avg_xg,
                     "away_avg_xg": away_avg_xg
-                }
-                
-                # D. Picu analisis taktis AI Gemini
-                ai_analysis = gemini.generate_match_analysis(match_payload)
+                })
+            
+            if batch_payloads:
+                print(f"  -> Mengirim {len(batch_payloads)} pertandingan ke Gemini untuk dianalisis sekaligus...")
+                # D. Picu analisis taktis AI Gemini (Batching)
+                batch_analyses = gemini.generate_batch_match_analysis(batch_payloads)
                 
                 # E. Simpan hasil prediksi dan ulasan AI ke database
-                prediction_record = {
-                    "match_id": match_id,
-                    "home_prob": poisson_results["home_prob"],
-                    "draw_prob": poisson_results["draw_prob"],
-                    "away_prob": poisson_results["away_prob"],
-                    "predicted_home_score": ai_analysis["prediksi_skor"]["home"],
-                    "predicted_away_score": ai_analysis["prediksi_skor"]["away"],
-                    "analysis_text": ai_analysis["ulasan_analisis"],
-                    "key_factors": ai_analysis["faktor_kunci"]
-                }
-                
-                db.upsert_prediction(prediction_record)
-                total_predictions_made += 1
-                print(f"     [OK] Prediksi berhasil disimpan. Skor AI: {ai_analysis['prediksi_skor']['home']} - {ai_analysis['prediksi_skor']['away']}.")
+                for analysis in batch_analyses:
+                    m_id = analysis["match_id"]
+                    # Cari info payload asli untuk probabilitas Poisson
+                    original_payload = next((item for item in batch_payloads if item["match_id"] == m_id), None)
+                    if not original_payload:
+                        continue
+                        
+                    prediction_record = {
+                        "match_id": m_id,
+                        "home_prob": original_payload["home_prob"],
+                        "draw_prob": original_payload["draw_prob"],
+                        "away_prob": original_payload["away_prob"],
+                        "predicted_home_score": analysis["prediksi_skor"]["home"],
+                        "predicted_away_score": analysis["prediksi_skor"]["away"],
+                        "analysis_text": analysis["ulasan_analisis"],
+                        "key_factors": analysis["faktor_kunci"]
+                    }
+                    
+                    db.upsert_prediction(prediction_record)
+                    total_predictions_made += 1
+                    print(f"     [OK] Prediksi untuk Match ID {m_id} disimpan. Skor AI: {analysis['prediksi_skor']['home']} - {analysis['prediksi_skor']['away']}.")
                 
                 # Delay singkat antar pemanggilan Gemini API untuk keselamatan rate limit
                 time.sleep(1.5)
