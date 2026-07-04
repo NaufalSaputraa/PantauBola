@@ -1,10 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
-
 @import "tailwindcss";
 
 @theme {
   /* Premium Apple System Accents */
   --color-primary: #0071e3;         /* Apple Blue */
+  --color-secondary: #8e8e93;       /* Apple Gray */
   --color-success: #34c759;         /* Apple Green untuk menang */
   --color-danger: #ff3b30;          /* Apple Red untuk kalah */
   
@@ -15,8 +14,8 @@
   --color-border-custom: var(--border);
 
   /* Typography Fallbacks */
-  --font-heading: 'Outfit', sans-serif;
-  --font-body: 'Inter', sans-serif;
+  --font-heading: var(--font-outfit), sans-serif;
+  --font-body: var(--font-inter), sans-serif;
 }
 
 :root {

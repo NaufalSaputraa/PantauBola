@@ -1,14 +1,12 @@
 name: PantauBola Data Pipeline
 
-# on:
-#   schedule:
-#     # Solusi A: Berjalan 2 kali seminggu
-#     # 1. Senin malam pukul 23:00 UTC (Selasa 06:00 WIB) - Sync skor weekend + prediksi midweek
-#     - cron: '0 23 * * 1'
-#     # 2. Jumat pagi pukul 06:00 UTC (Jumat 13:00 WIB) - Sync skor midweek + prediksi weekend
-#     - cron: '0 6 * * 5'
 on:
-  workflow_dispatch: # Memungkinkan pemicu manual dari dashboard GitHub (off-season)
+  schedule:
+    # 1. Senin malam pukul 23:00 UTC (Selasa 06:00 WIB) - Sync skor weekend + prediksi midweek
+    - cron: '0 23 * * 1'
+    # 2. Jumat pagi pukul 06:00 UTC (Jumat 13:00 WIB) - Sync skor midweek + prediksi weekend
+    - cron: '0 6 * * 5'
+  workflow_dispatch: # Memungkinkan pemicu manual dari dashboard GitHub
 
 jobs:
   run-pipeline:
@@ -40,5 +38,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python pipeline/main.py

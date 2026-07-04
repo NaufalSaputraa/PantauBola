@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Match, Standing, LEAGUE_NAMES } from '@/types';
 import { 
-  TrendingUp, 
   Calendar, 
   Award, 
   BarChart3, 
@@ -12,72 +11,13 @@ import {
   ChevronRight, 
   Tv,
   Loader2,
-  ChevronDown,
   Activity
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
-// Mock Data Fallbacks (Untuk Demo Menarik & Bulletproof)
-const MOCK_STANDINGS: Standing[] = [
-  { id: 1, team_id: 101, league: 'PL', position: 1, played: 28, won: 20, drawn: 5, lost: 3, goals_for: 65, goals_against: 24, points: 65, teams: { id: 101, name: 'Arsenal', logo_url: 'https://crests.football-data.org/57.png', league: 'PL' }, updated_at: '' },
-  { id: 2, team_id: 102, league: 'PL', position: 2, played: 28, won: 19, drawn: 6, lost: 3, goals_for: 62, goals_against: 25, points: 63, teams: { id: 102, name: 'Liverpool', logo_url: 'https://crests.football-data.org/64.png', league: 'PL' }, updated_at: '' },
-  { id: 3, team_id: 103, league: 'PL', position: 3, played: 28, won: 18, drawn: 7, lost: 3, goals_for: 68, goals_against: 26, points: 61, teams: { id: 103, name: 'Manchester City', logo_url: 'https://crests.football-data.org/65.png', league: 'PL' }, updated_at: '' },
-  { id: 4, team_id: 104, league: 'PL', position: 4, played: 28, won: 16, drawn: 5, lost: 7, goals_for: 55, goals_against: 37, points: 53, teams: { id: 104, name: 'Aston Villa', logo_url: 'https://crests.football-data.org/58.png', league: 'PL' }, updated_at: '' },
-  { id: 5, team_id: 105, league: 'PL', position: 5, played: 28, won: 15, drawn: 5, lost: 8, goals_for: 57, goals_against: 45, points: 50, teams: { id: 105, name: 'Tottenham Hotspur', logo_url: 'https://crests.football-data.org/73.png', league: 'PL' }, updated_at: '' },
-];
-
-const MOCK_MATCHES: Match[] = [
-  {
-    id: 4001,
-    home_team_id: 101,
-    away_team_id: 103,
-    match_date: new Date(Date.now() + 86400000 * 2).toISOString(), // Besok lusa
-    home_score: null,
-    away_score: null,
-    status: 'SCHEDULED',
-    league: 'PL',
-    matchday: 29,
-    home_team: { id: 101, name: 'Arsenal', logo_url: 'https://crests.football-data.org/57.png', league: 'PL' },
-    away_team: { id: 103, name: 'Manchester City', logo_url: 'https://crests.football-data.org/65.png', league: 'PL' },
-    ai_predictions: {
-      id: 501,
-      match_id: 4001,
-      home_prob: 45.5,
-      draw_prob: 28.3,
-      away_prob: 26.2,
-      predicted_home_score: 2,
-      predicted_away_score: 1,
-      analysis_text: 'Arsenal sedang on-fire di kandang dengan pertahanan rapat. Man City andalkan build-up rapi tapi rawan counter-attack.',
-      key_factors: ['Dominasi lini tengah', 'Counter-attack cepat', 'Faktor kandang Emirates'],
-      updated_at: ''
-    }
-  },
-  {
-    id: 4002,
-    home_team_id: 102,
-    away_team_id: 105,
-    match_date: new Date(Date.now() + 86400000 * 3).toISOString(),
-    home_score: null,
-    away_score: null,
-    status: 'SCHEDULED',
-    league: 'PL',
-    matchday: 29,
-    home_team: { id: 102, name: 'Liverpool', logo_url: 'https://crests.football-data.org/64.png', league: 'PL' },
-    away_team: { id: 105, name: 'Tottenham Hotspur', logo_url: 'https://crests.football-data.org/73.png', league: 'PL' },
-    ai_predictions: {
-      id: 502,
-      match_id: 4002,
-      home_prob: 52.1,
-      draw_prob: 22.4,
-      away_prob: 25.5,
-      predicted_home_score: 3,
-      predicted_away_score: 2,
-      analysis_text: 'Jalannya laga bakal terbuka dan sengit. Lini serang Liverpool sangat produktif tapi Spurs punya transisi menyerang mematikan.',
-      key_factors: ['High-pressing ketat', 'Efektivitas finishing', 'Transisi serangan balik'],
-      updated_at: ''
-    }
-  }
-];
+import { MOCK_STANDINGS, MOCK_MATCHES } from '@/lib/mock-data';
+import Footer from '@/components/Footer';
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
@@ -85,6 +25,9 @@ export default function Home() {
   const [standings, setStandings] = useState<Standing[]>(MOCK_STANDINGS);
   const [matches, setMatches] = useState<Match[]>(MOCK_MATCHES);
   const [insights, setInsights] = useState<Match | null>(MOCK_MATCHES[0]);
+  const [accuracy, setAccuracy] = useState('75.0');
+  const [goalRate, setGoalRate] = useState('2.70');
+  const [mostProductive, setMostProductive] = useState('N/A');
 
   useEffect(() => {
     async function fetchData() {
@@ -106,6 +49,17 @@ export default function Home() {
             teams: item.teams ? (Array.isArray(item.teams) ? item.teams[0] : item.teams) : undefined
           }));
           setStandings(formattedStandings as Standing[]);
+
+          // Cari tim paling produktif dari standings
+          const bestTeam = formattedStandings.reduce((prev, current) => 
+            (prev.goals_for > current.goals_for) ? prev : current
+          );
+          setMostProductive(bestTeam.teams?.name || 'N/A');
+        } else {
+          // Fallback standings mock
+          const fallbackSt = MOCK_STANDINGS.filter(s => s.league === activeLeague);
+          setStandings(fallbackSt.length > 0 ? fallbackSt : MOCK_STANDINGS.slice(0, 5));
+          setMostProductive(activeLeague === 'PL' ? 'Arsenal' : 'N/A');
         }
 
         // 2. Tarik Upcoming Matches + Predictions
@@ -130,7 +84,69 @@ export default function Home() {
           // Cari pertandingan dengan probabilitas menang tertinggi atau big match untuk banner insight
           const bigMatch = (formattedMatches as Match[]).find(m => m.ai_predictions !== null) || (formattedMatches as Match[])[0];
           setInsights(bigMatch);
+        } else {
+          // Fallback matches mock
+          const fallbackM = MOCK_MATCHES.filter(m => m.league === activeLeague);
+          setMatches(fallbackM.length > 0 ? fallbackM : MOCK_MATCHES);
+          setInsights(fallbackM[0] || MOCK_MATCHES[0]);
         }
+
+        // 3. Tarik data riil untuk metrik akurasi AI & goal rate
+        const { data: finishedPredictions, error: accError } = await supabase
+          .from('matches')
+          .select('home_score, away_score, ai_predictions(predicted_home_score, predicted_away_score)')
+          .eq('status', 'FINISHED')
+          .not('ai_predictions', 'is', null);
+
+        if (!accError && finishedPredictions && finishedPredictions.length > 0) {
+          let correctCount = 0;
+          let totalCount = 0;
+          finishedPredictions.forEach((m: { home_score: number | null; away_score: number | null; ai_predictions: { predicted_home_score: number; predicted_away_score: number } | { predicted_home_score: number; predicted_away_score: number }[] | null }) => {
+            const pred = Array.isArray(m.ai_predictions) ? m.ai_predictions[0] : m.ai_predictions;
+            if (pred && m.home_score !== null && m.away_score !== null) {
+              const actualHome = m.home_score;
+              const actualAway = m.away_score;
+              const predHome = pred.predicted_home_score;
+              const predAway = pred.predicted_away_score;
+
+              const actualResult = actualHome > actualAway ? 'H' : actualHome === actualAway ? 'D' : 'A';
+              const predResult = predHome > predAway ? 'H' : predHome === predAway ? 'D' : 'A';
+
+              if (actualResult === predResult) {
+                correctCount++;
+              }
+              totalCount++;
+            }
+          });
+          if (totalCount > 0) {
+            setAccuracy(((correctCount / totalCount) * 100).toFixed(1));
+          }
+        } else {
+          setAccuracy('78.4');
+        }
+
+        const { data: leagueFinishedMatches, error: goalError } = await supabase
+          .from('matches')
+          .select('home_score, away_score')
+          .eq('league', activeLeague)
+          .eq('status', 'FINISHED');
+
+        if (!goalError && leagueFinishedMatches && leagueFinishedMatches.length > 0) {
+          let totalGoals = 0;
+          let finishedCount = 0;
+          leagueFinishedMatches.forEach(m => {
+            if (m.home_score !== null && m.away_score !== null) {
+              totalGoals += m.home_score + m.away_score;
+              finishedCount++;
+            }
+          });
+          if (finishedCount > 0) {
+            setGoalRate((totalGoals / finishedCount).toFixed(2));
+          }
+        } else {
+          setGoalRate('2.85');
+        }
+
       } catch (err) {
         console.error('Error fetching data from Supabase:', err);
       } finally {
@@ -215,22 +231,24 @@ export default function Home() {
                   >
                     <div className="flex flex-col gap-1 w-2/5">
                       <div className="flex items-center gap-2">
-                        <img 
-                          src={match.home_team?.logo_url} 
-                          alt={match.home_team?.name} 
-                          className="w-5 h-5 object-contain" 
-                          onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+                        <Image 
+                          src={match.home_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                          alt={match.home_team?.name || 'Home Team'} 
+                          width={20}
+                          height={20}
+                          className="object-contain" 
                         />
                         <span className="font-semibold text-xs truncate text-text-custom">
                           {match.home_team?.name}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <img 
-                          src={match.away_team?.logo_url} 
-                          alt={match.away_team?.name} 
-                          className="w-5 h-5 object-contain" 
-                          onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+                        <Image 
+                          src={match.away_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                          alt={match.away_team?.name || 'Away Team'} 
+                          width={20}
+                          height={20}
+                          className="object-contain" 
                         />
                         <span className="font-semibold text-xs truncate text-text-custom">
                           {match.away_team?.name}
@@ -299,11 +317,12 @@ export default function Home() {
                 <div key={team.team_id} className="flex items-center justify-between text-xs py-1.5 border-b border-border-custom last:border-0">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="w-4 font-bold text-secondary text-center shrink-0">{idx + 1}</span>
-                    <img 
-                      src={team.teams?.logo_url} 
-                      alt={team.teams?.name} 
-                      className="w-4 h-4 object-contain shrink-0" 
-                      onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+                    <Image 
+                      src={team.teams?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                      alt={team.teams?.name || 'Team Logo'} 
+                      width={16}
+                      height={16}
+                      className="object-contain shrink-0" 
                     />
                     <span className="font-semibold text-text-custom truncate">{team.teams?.name}</span>
                   </div>
@@ -324,18 +343,46 @@ export default function Home() {
             <h2 className="text-xs font-bold text-secondary tracking-wider uppercase">
               AI Prediction Accuracy
             </h2>
-            <div className="flex items-baseline gap-1 mt-4">
-              <span className="text-4xl font-extrabold tracking-tight text-text-custom">78.4%</span>
-              <span className="text-xs text-success font-bold flex items-center gap-0.5">
-                +1.2%
-              </span>
+            <div className="flex items-center gap-4 mt-5">
+              <div className="relative w-14 h-14 flex-shrink-0">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                  <path
+                    className="text-neutral-100 dark:text-neutral-800"
+                    strokeWidth="3.2"
+                    stroke="currentColor"
+                    fill="none"
+                    d="M18 2.0845
+                      a 15.9155 15.9155 0 0 1 0 31.831
+                      a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    className="text-success transition-all duration-1000 ease-out"
+                    strokeWidth="3.2"
+                    strokeDasharray={`${accuracy}, 100`}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="none"
+                    d="M18 2.0845
+                      a 15.9155 15.9155 0 0 1 0 31.831
+                      a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center text-xs font-extrabold text-text-custom">
+                  {accuracy}%
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-success flex items-center gap-0.5">
+                  +1.2% tren
+                </span>
+                <span className="text-[10px] text-secondary leading-tight mt-0.5">
+                  Laga historis teranalisis di database.
+                </span>
+              </div>
             </div>
-            <p className="text-[11px] text-secondary mt-2">
-              Tingkat akurasi prediksi hasil pertandingan (1X2) dalam 50 laga terakhir.
-            </p>
           </div>
           <div className="mt-4 pt-3 border-t border-border-custom flex items-center justify-between text-[10px] text-secondary font-medium">
-            <span>Model: Gemini 1.5 Flash</span>
+            <span>Model: Gemini 3.5 Flash</span>
             <span className="text-success flex items-center gap-1 font-semibold">
               <span className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
               On-Target
@@ -351,7 +398,7 @@ export default function Home() {
               Liga Goal Rate
             </h2>
             <div className="flex items-baseline gap-1 mt-4">
-              <span className="text-4xl font-extrabold tracking-tight text-text-custom">2.85</span>
+              <span className="text-4xl font-extrabold tracking-tight text-text-custom">{goalRate}</span>
               <span className="text-xs text-secondary font-medium">gol / match</span>
             </div>
             <p className="text-[11px] text-secondary mt-2">
@@ -359,7 +406,7 @@ export default function Home() {
             </p>
           </div>
           <div className="mt-4 pt-3 border-t border-border-custom text-[10px] text-secondary font-medium">
-            <span>Paling Produktif: {activeLeague === 'PL' ? 'Manchester City' : 'Real Madrid'}</span>
+            <span>Paling Produktif: {mostProductive}</span>
           </div>
         </section>
 
@@ -382,7 +429,7 @@ export default function Home() {
               </h3>
               
               <p className="text-xs text-secondary mt-2 leading-relaxed max-w-3xl">
-                "{insights.ai_predictions.analysis_text}"
+                &ldquo;{insights.ai_predictions.analysis_text}&rdquo;
               </p>
               
               <div className="flex flex-wrap gap-2 mt-4">
@@ -415,9 +462,7 @@ export default function Home() {
       </main>
 
       {/* FOOTER */}
-      <footer className="mt-12 text-center text-xs text-secondary border-t border-border-custom pt-6">
-        <p>© 2026 PantauBola Pro Portfolio. Developed by Nurfajar Naufal.</p>
-      </footer>
+      <Footer />
     </div>
   );
 }

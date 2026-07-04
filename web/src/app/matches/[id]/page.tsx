@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -7,16 +9,14 @@ import { Match, LEAGUE_NAMES } from '@/types';
 import { 
   Loader2, 
   ChevronLeft, 
-  Tv, 
   BrainCircuit, 
   Lightbulb, 
   BarChart3, 
   ShieldAlert,
-  Flame,
-  TrendingUp,
   Activity
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   ResponsiveContainer,
   BarChart,
@@ -27,48 +27,8 @@ import {
   Legend
 } from 'recharts';
 
-// Fallback Mock Data jika Match ID tidak ditemukan
-const getMockMatchDetail = (id: string): Match => {
-  return {
-    id: parseInt(id) || 4001,
-    home_team_id: 101,
-    away_team_id: 103,
-    match_date: new Date(Date.now() - 86400000 * 2).toISOString(), // Selesai
-    home_score: 2,
-    away_score: 1,
-    status: 'FINISHED',
-    league: 'PL',
-    matchday: 29,
-    home_team: { id: 101, name: 'Arsenal', logo_url: 'https://crests.football-data.org/57.png', league: 'PL' },
-    away_team: { id: 103, name: 'Manchester City', logo_url: 'https://crests.football-data.org/65.png', league: 'PL' },
-    home_xg: 1.84,
-    away_xg: 1.12,
-    home_shots: 14,
-    away_shots: 8,
-    home_shots_on_target: 6,
-    away_shots_on_target: 3,
-    home_deep: 10,
-    away_deep: 5,
-    home_ppda: 8.50,
-    away_ppda: 12.30,
-    ai_predictions: {
-      id: 501,
-      match_id: parseInt(id) || 4001,
-      home_prob: 45.5,
-      draw_prob: 28.3,
-      away_prob: 26.2,
-      predicted_home_score: 2,
-      predicted_away_score: 1,
-      analysis_text: 'Arsenal sedang dalam kondisi on-fire di kandang dengan pertahanan rapat. Man City diprediksi menguasai ball possession namun rawan terkena counter-attack kilat Saka dan Martinelli. Kehilangan Rodri di lini tengah City bisa jadi faktor kunci kegagalan membendung transisi cepat Gunners.',
-      key_factors: [
-        'Transisi counter-attack kilat Arsenal lewat sayap.',
-        'Absennya jangkar gelandang pertahanan Manchester City.',
-        'Dominasi duel udara set-piece bek kandang Emirates.'
-      ],
-      updated_at: ''
-    }
-  };
-};
+import { getMockMatchDetail } from '@/lib/mock-data';
+import Footer from '@/components/Footer';
 
 interface StatRowProps {
   label: string;
@@ -120,12 +80,31 @@ function StatRow({ label, homeVal, awayVal, homePercent, isLowerBetter = false }
   );
 }
 
+interface H2HMatch {
+  match_date: string;
+  home_score: number | null;
+  away_score: number | null;
+  home_team?: {
+    name: string;
+    logo_url?: string;
+  };
+  away_team?: {
+    name: string;
+    logo_url?: string;
+  };
+}
+
 export default function MatchDetailPage() {
   const { id } = useParams() as { id: string };
   const [loading, setLoading] = useState(true);
   const [match, setMatch] = useState<Match | null>(null);
+  const [homeMetrics, setHomeMetrics] = useState({ avgGoals: 1.5, winRate: 45, avgConceded: 1.0 });
+  const [awayMetrics, setAwayMetrics] = useState({ avgGoals: 1.2, winRate: 35, avgConceded: 1.4 });
+  const [h2hMatches, setH2hMatches] = useState<H2HMatch[]>([]);
+
   const [mounted, setMounted] = useState(false);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -148,13 +127,94 @@ export default function MatchDetailPage() {
             ai_predictions: data.ai_predictions ? (Array.isArray(data.ai_predictions) ? data.ai_predictions[0] : data.ai_predictions) : null
           };
           setMatch(formatted);
+
+          // Tarik metrik taktis riil dari standings database
+          const { data: stData } = await supabase
+            .from('standings')
+            .select('team_id, played, goals_for, goals_against, won')
+            .in('team_id', [formatted.home_team_id, formatted.away_team_id]);
+
+          if (stData && stData.length > 0) {
+            const hSt = stData.find(s => s.team_id === formatted.home_team_id);
+            const aSt = stData.find(s => s.team_id === formatted.away_team_id);
+
+            if (hSt && hSt.played > 0) {
+              setHomeMetrics({
+                avgGoals: Number((hSt.goals_for / hSt.played).toFixed(2)),
+                winRate: Number(((hSt.won / hSt.played) * 100).toFixed(1)),
+                avgConceded: Number((hSt.goals_against / hSt.played).toFixed(2))
+              });
+            }
+            if (aSt && aSt.played > 0) {
+              setAwayMetrics({
+                avgGoals: Number((aSt.goals_for / aSt.played).toFixed(2)),
+                winRate: Number(((aSt.won / aSt.played) * 100).toFixed(1)),
+                avgConceded: Number((aSt.goals_against / aSt.played).toFixed(2))
+              });
+            }
+          }
+
+          // Tarik data H2H historis
+          const { data: h2hData } = await supabase
+            .from('matches')
+            .select('home_score, away_score, match_date, home_team_id, away_team_id, status, home_team:teams!home_team_id(name, logo_url), away_team:teams!away_team_id(name, logo_url)')
+            .or(`and(home_team_id.eq.${formatted.home_team_id},away_team_id.eq.${formatted.away_team_id}),and(home_team_id.eq.${formatted.away_team_id},away_team_id.eq.${formatted.home_team_id})`)
+            .eq('status', 'FINISHED')
+            .order('match_date', { ascending: false })
+            .limit(5);
+
+          if (h2hData && h2hData.length > 0) {
+            const formattedH2H: H2HMatch[] = h2hData.map((m) => {
+              const hTeam = m.home_team ? (Array.isArray(m.home_team) ? m.home_team[0] : m.home_team) as { name: string; logo_url?: string } : undefined;
+              const aTeam = m.away_team ? (Array.isArray(m.away_team) ? m.away_team[0] : m.away_team) as { name: string; logo_url?: string } : undefined;
+              return {
+                match_date: m.match_date,
+                home_score: m.home_score,
+                away_score: m.away_score,
+                home_team: hTeam ? { name: hTeam.name, logo_url: hTeam.logo_url } : undefined,
+                away_team: aTeam ? { name: aTeam.name, logo_url: aTeam.logo_url } : undefined
+              };
+            });
+            setH2hMatches(formattedH2H);
+          }
         } else {
           // Fallback ke Mock Data jika query DB kosong (supaya demo selalu berfungsi)
-          setMatch(getMockMatchDetail(id));
+          const mockMatch = getMockMatchDetail(id);
+          setMatch(mockMatch);
+          setHomeMetrics({ avgGoals: 2.3, winRate: 71.4, avgConceded: 0.85 });
+          setAwayMetrics({ avgGoals: 2.0, winRate: 67.8, avgConceded: 0.92 });
+          setH2hMatches([
+            {
+              match_date: new Date(Date.now() - 86400000 * 180).toISOString(),
+              home_score: 2,
+              away_score: 2,
+              home_team: mockMatch.home_team,
+              away_team: mockMatch.away_team
+            },
+            {
+              match_date: new Date(Date.now() - 86400000 * 365).toISOString(),
+              home_score: 1,
+              away_score: 0,
+              home_team: mockMatch.away_team,
+              away_team: mockMatch.home_team
+            }
+          ]);
         }
       } catch (err) {
         console.error('Error fetching match details:', err);
-        setMatch(getMockMatchDetail(id));
+        const mockMatch = getMockMatchDetail(id);
+        setMatch(mockMatch);
+        setHomeMetrics({ avgGoals: 2.3, winRate: 71.4, avgConceded: 0.85 });
+        setAwayMetrics({ avgGoals: 2.0, winRate: 67.8, avgConceded: 0.92 });
+        setH2hMatches([
+          {
+            match_date: new Date(Date.now() - 86400000 * 180).toISOString(),
+            home_score: 2,
+            away_score: 2,
+            home_team: mockMatch.home_team,
+            away_team: mockMatch.away_team
+          }
+        ]);
       } finally {
         setLoading(false);
       }
@@ -185,7 +245,7 @@ export default function MatchDetailPage() {
 
   const isFinished = match.status === 'FINISHED';
   
-  // Data Statistik untuk Chart
+  // Data Statistik untuk Chart (Ambil metrik riil)
   const chartData = [
     {
       name: 'Peluang Menang (%)',
@@ -194,18 +254,18 @@ export default function MatchDetailPage() {
     },
     {
       name: 'Rata-rata Gol / Laga',
-      [match.home_team?.name || 'Home']: 2.3, // Dummy metrics untuk perbandingan statistik visual
-      [match.away_team?.name || 'Away']: 2.0,
+      [match.home_team?.name || 'Home']: homeMetrics.avgGoals,
+      [match.away_team?.name || 'Away']: awayMetrics.avgGoals,
     },
     {
-      name: 'Clean Sheets / Musim',
-      [match.home_team?.name || 'Home']: 12,
-      [match.away_team?.name || 'Away']: 10,
+      name: 'Rasio Menang (%)',
+      [match.home_team?.name || 'Home']: homeMetrics.winRate,
+      [match.away_team?.name || 'Away']: awayMetrics.winRate,
     },
     {
-      name: 'Efisiensi Shot on Target (%)',
-      [match.home_team?.name || 'Home']: 38,
-      [match.away_team?.name || 'Away']: 34,
+      name: 'Rata-rata Kebobolan',
+      [match.home_team?.name || 'Home']: homeMetrics.avgConceded,
+      [match.away_team?.name || 'Away']: awayMetrics.avgConceded,
     }
   ];
 
@@ -235,11 +295,12 @@ export default function MatchDetailPage() {
         {/* ROW 1: SCOREBOARD (col-span-3) */}
         <section className="col-span-1 md:col-span-3 bg-card-bg-custom border border-border-custom rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4 w-full md:w-5/12 justify-center md:justify-start">
-            <img 
-              src={match.home_team?.logo_url} 
-              alt={match.home_team?.name} 
-              className="w-16 h-16 object-contain"
-              onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+            <Image 
+              src={match.home_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+              alt={match.home_team?.name || 'Home Team'} 
+              width={64}
+              height={64}
+              className="object-contain"
             />
             <div>
               <h2 className="text-lg font-bold text-text-custom">{match.home_team?.name}</h2>
@@ -277,11 +338,12 @@ export default function MatchDetailPage() {
               <h2 className="text-lg font-bold text-text-custom">{match.away_team?.name}</h2>
               <span className="text-xs text-secondary">Tandang</span>
             </div>
-            <img 
-              src={match.away_team?.logo_url} 
-              alt={match.away_team?.name} 
-              className="w-16 h-16 object-contain"
-              onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+            <Image 
+              src={match.away_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+              alt={match.away_team?.name || 'Away Team'} 
+              width={64}
+              height={64}
+              className="object-contain"
             />
           </div>
         </section>
@@ -378,7 +440,7 @@ export default function MatchDetailPage() {
               </h3>
               
               <div className="text-sm text-text-custom leading-relaxed bg-neutral-50 dark:bg-neutral-900/30 p-4 rounded-xl border border-border-custom font-medium italic">
-                "{match.ai_predictions.analysis_text}"
+                &ldquo;{match.ai_predictions.analysis_text}&rdquo;
               </div>
             </div>
 
@@ -454,6 +516,59 @@ export default function MatchDetailPage() {
           </section>
         )}
 
+        {/* ROW: HEAD-TO-HEAD HISTORY (col-span-3) */}
+        <section className="col-span-1 md:col-span-3 bg-card-bg-custom border border-border-custom rounded-2xl p-6">
+          <h3 className="text-sm font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5 border-b border-border-custom pb-3 mb-6">
+            <Activity className="w-4.5 h-4.5 text-primary" />
+            Riwayat Pertemuan Head-to-Head (H2H)
+          </h3>
+          {h2hMatches.length === 0 ? (
+            <div className="text-center py-8 text-xs text-secondary italic">
+              Belum ada riwayat pertemuan resmi tercatat di database untuk musim ini.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {h2hMatches.map((h2h, idx) => {
+                const h2hDate = new Date(h2h.match_date).toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                });
+                return (
+                  <div key={idx} className="flex items-center justify-between p-3.5 bg-neutral-50 dark:bg-neutral-900/30 border border-border-custom rounded-xl text-xs">
+                    <div className="flex items-center gap-2 w-5/12 truncate font-semibold text-text-custom">
+                      <Image 
+                        src={h2h.home_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                        alt="Home" 
+                        width={18} 
+                        height={18} 
+                        className="object-contain shrink-0" 
+                      />
+                      <span className="truncate">{h2h.home_team?.name}</span>
+                    </div>
+                    <div className="flex flex-col items-center justify-center w-2/12 shrink-0">
+                      <span className="font-extrabold text-sm text-text-custom font-mono">
+                        {h2h.home_score} - {h2h.away_score}
+                      </span>
+                      <span className="text-[9px] text-secondary mt-0.5 whitespace-nowrap">{h2hDate}</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 w-5/12 truncate font-semibold text-text-custom text-right">
+                      <span className="truncate">{h2h.away_team?.name}</span>
+                      <Image 
+                        src={h2h.away_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                        alt="Away" 
+                        width={18} 
+                        height={18} 
+                        className="object-contain shrink-0" 
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         {/* ROW 5: STATISTIK DETAIL PERTANDINGAN (Hanya untuk Laga FINISHED dengan data stat) */}
         {isFinished && match.home_shots !== null && match.home_shots !== undefined && (
           <section className="col-span-1 md:col-span-3 bg-card-bg-custom border border-border-custom rounded-2xl p-6">
@@ -515,9 +630,7 @@ export default function MatchDetailPage() {
       </main>
 
       {/* FOOTER */}
-      <footer className="mt-8 text-center text-xs text-secondary">
-        <p>© 2026 PantauBola Pro Portfolio. Developed by Nurfajar Naufal.</p>
-      </footer>
+      <Footer />
     </div>
   );
 }

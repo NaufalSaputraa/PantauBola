@@ -2,12 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Team, Match } from '@/types';
+import { Team } from '@/types';
 import { 
-  Flame, 
-  HelpCircle, 
   ChevronLeft, 
-  Play, 
   Sliders, 
   TrendingUp, 
   Activity, 
@@ -29,8 +26,9 @@ export default function AISimulatorPage() {
   const [selectedHomeId, setSelectedHomeId] = useState<number | ''>('');
   const [selectedAwayId, setSelectedAwayId] = useState<number | ''>('');
   
-  const [homeTeam, setHomeTeam] = useState<Team | null>(null);
-  const [awayTeam, setAwayTeam] = useState<Team | null>(null);
+  // Derived state
+  const homeTeam = selectedHomeId !== '' ? teams.find(t => t.id === Number(selectedHomeId)) || null : null;
+  const awayTeam = selectedAwayId !== '' ? teams.find(t => t.id === Number(selectedAwayId)) || null : null;
   
   // Simulated sliders (expected xG)
   const [homeXG, setHomeXG] = useState<number>(1.5);
@@ -40,14 +38,11 @@ export default function AISimulatorPage() {
   const [homeStats, setHomeStats] = useState({ avgGoals: 1.5, avgXG: 1.5, matchesPlayed: 0 });
   const [awayStats, setAwayStats] = useState({ avgGoals: 1.2, avgXG: 1.2, matchesPlayed: 0 });
   
-  const [loadingTeams, setLoadingTeams] = useState(true);
-  const [loadingStats, setLoadingStats] = useState(false);
 
-  // Fetch all teams on mount
+
   useEffect(() => {
     async function fetchTeams() {
       try {
-        setLoadingTeams(true);
         const { data, error } = await supabase
           .from('teams')
           .select('*')
@@ -58,39 +53,13 @@ export default function AISimulatorPage() {
         }
       } catch (err) {
         console.error('Error fetching teams:', err);
-      } finally {
-        setLoadingTeams(false);
       }
     }
     fetchTeams();
   }, []);
 
-  // Handle Home Team Selection
-  useEffect(() => {
-    if (selectedHomeId === '') {
-      setHomeTeam(null);
-      return;
-    }
-    const team = teams.find(t => t.id === Number(selectedHomeId)) || null;
-    setHomeTeam(team);
-    if (team) fetchHistoricalStats(team.id, true);
-  }, [selectedHomeId, teams]);
-
-  // Handle Away Team Selection
-  useEffect(() => {
-    if (selectedAwayId === '') {
-      setAwayTeam(null);
-      return;
-    }
-    const team = teams.find(t => t.id === Number(selectedAwayId)) || null;
-    setAwayTeam(team);
-    if (team) fetchHistoricalStats(team.id, false);
-  }, [selectedAwayId, teams]);
-
-  // Fetch historical averages for the selected team to set initial sliders
   async function fetchHistoricalStats(teamId: number, isHome: boolean) {
     try {
-      setLoadingStats(true);
       const { data, error } = await supabase
         .from('matches')
         .select('home_team_id, away_team_id, home_score, away_score, home_xg, away_xg')
@@ -101,9 +70,9 @@ export default function AISimulatorPage() {
         let totalGoals = 0;
         let totalXG = 0;
         let xgCount = 0;
-        let matchesCount = data.length;
+        const matchesCount = data.length;
 
-        data.forEach((m: any) => {
+        data.forEach((m: { home_team_id: number; home_score: number | null; away_score: number | null; home_xg: number | string | null; away_xg: number | string | null }) => {
           if (m.home_team_id === teamId) {
             totalGoals += m.home_score ?? 0;
             if (m.home_xg !== null && m.home_xg !== undefined) {
@@ -132,8 +101,6 @@ export default function AISimulatorPage() {
       }
     } catch (err) {
       console.error('Error fetching team stats:', err);
-    } finally {
-      setLoadingStats(false);
     }
   }
 
@@ -204,7 +171,13 @@ export default function AISimulatorPage() {
             <label className="text-xs font-bold text-secondary uppercase tracking-wider">Tim Kandang (Home)</label>
             <select
               value={selectedHomeId}
-              onChange={(e) => setSelectedHomeId(e.target.value ? Number(e.target.value) : '')}
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : '';
+                setSelectedHomeId(val);
+                if (val !== '') {
+                  fetchHistoricalStats(val, true);
+                }
+              }}
               className="w-full bg-neutral-50 dark:bg-neutral-900 border border-border-custom text-text-custom text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all cursor-pointer font-medium"
             >
               <option value="">-- Pilih Tim Kandang --</option>
@@ -219,7 +192,13 @@ export default function AISimulatorPage() {
             <label className="text-xs font-bold text-secondary uppercase tracking-wider">Tim Tandang (Away)</label>
             <select
               value={selectedAwayId}
-              onChange={(e) => setSelectedAwayId(e.target.value ? Number(e.target.value) : '')}
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : '';
+                setSelectedAwayId(val);
+                if (val !== '') {
+                  fetchHistoricalStats(val, false);
+                }
+              }}
               className="w-full bg-neutral-50 dark:bg-neutral-900 border border-border-custom text-text-custom text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all cursor-pointer font-medium"
             >
               <option value="">-- Pilih Tim Tandang --</option>

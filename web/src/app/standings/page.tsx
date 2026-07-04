@@ -1,53 +1,75 @@
-'use client';
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { supabase } from '@/lib/supabase';
 import { Standing, LEAGUE_NAMES } from '@/types';
-import { Loader2, Award, ChevronLeft, ArrowUpRight } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
+import { MOCK_STANDINGS } from '@/lib/mock-data';
+import Footer from '@/components/Footer';
 
-// Mock Data Fallbacks (Untuk demo)
-const MOCK_STANDINGS: Standing[] = [
-  { id: 1, team_id: 101, league: 'PL', position: 1, played: 28, won: 20, drawn: 5, lost: 3, goals_for: 65, goals_against: 24, points: 65, teams: { id: 101, name: 'Arsenal', logo_url: 'https://crests.football-data.org/57.png', league: 'PL' }, updated_at: '' },
-  { id: 2, team_id: 102, league: 'PL', position: 2, played: 28, won: 19, drawn: 6, lost: 3, goals_for: 62, goals_against: 25, points: 63, teams: { id: 102, name: 'Liverpool', logo_url: 'https://crests.football-data.org/64.png', league: 'PL' }, updated_at: '' },
-  { id: 3, team_id: 103, league: 'PL', position: 3, played: 28, won: 18, drawn: 7, lost: 3, goals_for: 68, goals_against: 26, points: 61, teams: { id: 103, name: 'Manchester City', logo_url: 'https://crests.football-data.org/65.png', league: 'PL' }, updated_at: '' },
-  { id: 4, team_id: 104, league: 'PL', position: 4, played: 28, won: 16, drawn: 5, lost: 7, goals_for: 55, goals_against: 37, points: 53, teams: { id: 104, name: 'Aston Villa', logo_url: 'https://crests.football-data.org/58.png', league: 'PL' }, updated_at: '' },
-  { id: 5, team_id: 105, league: 'PL', position: 5, played: 28, won: 15, drawn: 5, lost: 8, goals_for: 57, goals_against: 45, points: 50, teams: { id: 105, name: 'Tottenham Hotspur', logo_url: 'https://crests.football-data.org/73.png', league: 'PL' }, updated_at: '' },
-  { id: 6, team_id: 106, league: 'PL', position: 6, played: 28, won: 14, drawn: 5, lost: 9, goals_for: 52, goals_against: 39, points: 47, teams: { id: 106, name: 'Manchester United', logo_url: 'https://crests.football-data.org/66.png', league: 'PL' }, updated_at: '' },
-  { id: 7, team_id: 107, league: 'PL', position: 7, played: 28, won: 13, drawn: 4, lost: 11, goals_for: 48, goals_against: 43, points: 43, teams: { id: 107, name: 'West Ham United', logo_url: 'https://crests.football-data.org/563.png', league: 'PL' }, updated_at: '' },
-  { id: 8, team_id: 108, league: 'PL', position: 8, played: 28, won: 12, drawn: 6, lost: 10, goals_for: 45, goals_against: 44, points: 42, teams: { id: 108, name: 'Brighton & Hove Albion', logo_url: 'https://crests.football-data.org/397.png', league: 'PL' }, updated_at: '' },
-];
+interface PageProps {
+  searchParams: Promise<{ league?: string }>;
+}
 
-export default function StandingsPage() {
-  const [loading, setLoading] = useState(true);
-  const [activeLeague, setActiveLeague] = useState('PL');
-  const [standings, setStandings] = useState<Standing[]>(MOCK_STANDINGS);
+export default async function StandingsPage({ searchParams }: PageProps) {
+  const resolvedParams = await searchParams;
+  const activeLeague = resolvedParams.league || 'PL';
 
-  useEffect(() => {
-    async function fetchStandings() {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('standings')
-          .select('*, teams(*)')
-          .eq('league', activeLeague)
-          .order('position', { ascending: true });
+  let standings: Standing[] = [];
+  const teamForms: Record<number, ('W' | 'D' | 'L')[]> = {};
 
-        if (!error && data && data.length > 0) {
-          const formatted = data.map(item => ({
-            ...item,
-            teams: item.teams ? (Array.isArray(item.teams) ? item.teams[0] : item.teams) : undefined
-          }));
-          setStandings(formatted as Standing[]);
-        }
-      } catch (err) {
-        console.error('Error fetching standings:', err);
-      } finally {
-        setLoading(false);
-      }
+  try {
+    const { data, error } = await supabase
+      .from('standings')
+      .select('*, teams(*)')
+      .eq('league', activeLeague)
+      .order('position', { ascending: true });
+
+    if (!error && data && data.length > 0) {
+      standings = data.map(item => ({
+        ...item,
+        teams: item.teams ? (Array.isArray(item.teams) ? item.teams[0] : item.teams) : undefined
+      })) as Standing[];
+    } else {
+      standings = MOCK_STANDINGS.filter(s => s.league === activeLeague);
     }
-    fetchStandings();
-  }, [activeLeague]);
+
+    // Tarik 60 matches terakhir yang finished untuk menghitung form streak
+    const { data: finishedMatches } = await supabase
+      .from('matches')
+      .select('home_team_id, away_team_id, home_score, away_score')
+      .eq('league', activeLeague)
+      .eq('status', 'FINISHED')
+      .order('match_date', { ascending: false })
+      .limit(60);
+
+    if (finishedMatches) {
+      finishedMatches.forEach(m => {
+        if (m.home_score === null || m.away_score === null) return;
+        
+        const homeId = m.home_team_id;
+        const awayId = m.away_team_id;
+
+        if (homeId) {
+          if (!teamForms[homeId]) teamForms[homeId] = [];
+          if (teamForms[homeId].length < 5) {
+            const res = m.home_score > m.away_score ? 'W' : m.home_score === m.away_score ? 'D' : 'L';
+            teamForms[homeId].push(res);
+          }
+        }
+        if (awayId) {
+          if (!teamForms[awayId]) teamForms[awayId] = [];
+          if (teamForms[awayId].length < 5) {
+            const res = m.away_score > m.home_score ? 'W' : m.home_score === m.away_score ? 'D' : 'L';
+            teamForms[awayId].push(res);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Error fetching standings/matches for streak:', err);
+    standings = MOCK_STANDINGS.filter(s => s.league === activeLeague);
+  }
 
   return (
     <div className="min-h-screen p-6 md:p-10 max-w-6xl mx-auto flex flex-col gap-8">
@@ -72,9 +94,9 @@ export default function StandingsPage() {
       {/* FILTER PANEL */}
       <div className="flex flex-wrap gap-2 pb-4 border-b border-border-custom">
         {Object.entries(LEAGUE_NAMES).map(([code, name]) => (
-          <button
+          <Link
             key={code}
-            onClick={() => setActiveLeague(code)}
+            href={`/standings?league=${code}`}
             className={`px-4 py-2 text-xs font-semibold rounded-full border transition-all duration-200 cursor-pointer ${
               activeLeague === code
                 ? 'bg-primary border-primary text-white shadow-sm'
@@ -82,16 +104,15 @@ export default function StandingsPage() {
             }`}
           >
             {name}
-          </button>
+          </Link>
         ))}
       </div>
 
       {/* TABLE PANEL */}
       <div className="bg-card-bg-custom border border-border-custom rounded-2xl overflow-hidden">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-secondary gap-2">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <span className="text-xs">Menarik klasemen...</span>
+        {standings.length === 0 ? (
+          <div className="text-center py-20 text-secondary">
+            Tidak ada data klasemen untuk liga ini.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -106,6 +127,7 @@ export default function StandingsPage() {
                   <th className="py-4 px-4 text-center w-16">Kalah</th>
                   <th className="py-4 px-4 text-center w-20">Gol (F-A)</th>
                   <th className="py-4 px-4 text-center w-16">Selisih</th>
+                  <th className="py-4 px-4 text-center w-36">5 Laga Terakhir</th>
                   <th className="py-4 px-5 text-center w-20 font-extrabold text-text-custom">Poin</th>
                 </tr>
               </thead>
@@ -115,6 +137,10 @@ export default function StandingsPage() {
                   const isTop4 = idx < 4;
                   const isRelegation = idx >= standings.length - 3;
                   
+                  // Dapatkan streak terbalik (oldest-to-newest)
+                  const rawForm = teamForms[team.team_id] || ['W', 'D', 'W', 'L', 'W'];
+                  const formList = rawForm.slice().reverse();
+
                   return (
                     <tr 
                       key={team.team_id}
@@ -133,11 +159,12 @@ export default function StandingsPage() {
                       </td>
                       <td className="py-4 px-4 font-semibold text-text-custom">
                         <div className="flex items-center gap-3">
-                          <img 
-                            src={team.teams?.logo_url} 
-                            alt={team.teams?.name} 
-                            className="w-5 h-5 object-contain"
-                            onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+                          <Image 
+                            src={team.teams?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                            alt={team.teams?.name || 'Team Logo'} 
+                            width={20}
+                            height={20}
+                            className="object-contain"
                           />
                           <span>{team.teams?.name}</span>
                         </div>
@@ -152,6 +179,24 @@ export default function StandingsPage() {
                       }`}>
                         {goalDiff > 0 ? `+${goalDiff}` : goalDiff}
                       </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {formList.map((f, i) => (
+                            <span 
+                              key={i} 
+                              className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shadow-sm ${
+                                f === 'W' 
+                                  ? 'bg-success' 
+                                  : f === 'D' 
+                                    ? 'bg-secondary' 
+                                    : 'bg-danger'
+                              }`}
+                            >
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
                       <td className="py-4 px-5 text-center font-extrabold text-text-custom text-sm">{team.points}</td>
                     </tr>
                   );
@@ -163,19 +208,7 @@ export default function StandingsPage() {
       </div>
 
       {/* FOOTER */}
-      <footer className="mt-8 text-center text-xs text-secondary">
-        <div className="flex items-center justify-center gap-3 mb-2 text-[10px]">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-primary/20 border border-primary/40" />
-            Zona Champions League
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-danger/20 border border-danger/40" />
-            Zona Degradasi
-          </span>
-        </div>
-        <p>© 2026 PantauBola Pro Portfolio. Developed by Nurfajar Naufal.</p>
-      </footer>
+      <Footer showZones={true} />
     </div>
   );
 }

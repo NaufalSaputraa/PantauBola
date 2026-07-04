@@ -3,76 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Match, LEAGUE_NAMES } from '@/types';
-import { Loader2, Calendar, ChevronLeft, ChevronRight, Tv, Search } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Tv, Search } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
-// Mock Data Fallbacks
-const MOCK_MATCHES: Match[] = [
-  {
-    id: 4001,
-    home_team_id: 101,
-    away_team_id: 103,
-    match_date: new Date(Date.now() + 86400000 * 2).toISOString(),
-    home_score: null,
-    away_score: null,
-    status: 'SCHEDULED',
-    league: 'PL',
-    matchday: 29,
-    home_team: { id: 101, name: 'Arsenal', logo_url: 'https://crests.football-data.org/57.png', league: 'PL' },
-    away_team: { id: 103, name: 'Manchester City', logo_url: 'https://crests.football-data.org/65.png', league: 'PL' },
-    ai_predictions: {
-      id: 501,
-      match_id: 4001,
-      home_prob: 45.5,
-      draw_prob: 28.3,
-      away_prob: 26.2,
-      predicted_home_score: 2,
-      predicted_away_score: 1,
-      analysis_text: 'Arsenal sedang on-fire di kandang dengan pertahanan rapat. Man City andalkan build-up rapi tapi rawan counter-attack.',
-      key_factors: ['Dominasi lini tengah', 'Counter-attack cepat', 'Faktor kandang Emirates'],
-      updated_at: ''
-    }
-  },
-  {
-    id: 4002,
-    home_team_id: 102,
-    away_team_id: 105,
-    match_date: new Date(Date.now() + 86400000 * 3).toISOString(),
-    home_score: null,
-    away_score: null,
-    status: 'SCHEDULED',
-    league: 'PL',
-    matchday: 29,
-    home_team: { id: 102, name: 'Liverpool', logo_url: 'https://crests.football-data.org/64.png', league: 'PL' },
-    away_team: { id: 105, name: 'Tottenham Hotspur', logo_url: 'https://crests.football-data.org/73.png', league: 'PL' },
-    ai_predictions: {
-      id: 502,
-      match_id: 4002,
-      home_prob: 52.1,
-      draw_prob: 22.4,
-      away_prob: 25.5,
-      predicted_home_score: 3,
-      predicted_away_score: 2,
-      analysis_text: 'Jalannya laga bakal terbuka dan sengit. Lini serang Liverpool sangat produktif tapi Spurs punya transisi menyerang mematikan.',
-      key_factors: ['High-pressing ketat', 'Efektivitas finishing', 'Transisi serangan balik'],
-      updated_at: ''
-    }
-  },
-  {
-    id: 4003,
-    home_team_id: 106,
-    away_team_id: 104,
-    match_date: new Date(Date.now() - 86400000).toISOString(), // Kemarin
-    home_score: 2,
-    away_score: 1,
-    status: 'FINISHED',
-    league: 'PL',
-    matchday: 28,
-    home_team: { id: 106, name: 'Manchester United', logo_url: 'https://crests.football-data.org/66.png', league: 'PL' },
-    away_team: { id: 104, name: 'Aston Villa', logo_url: 'https://crests.football-data.org/58.png', league: 'PL' },
-    ai_predictions: null
-  }
-];
+import { MOCK_MATCHES } from '@/lib/mock-data';
+import Footer from '@/components/Footer';
 
 export default function MatchesPage() {
   const [loading, setLoading] = useState(true);
@@ -99,9 +35,12 @@ export default function MatchesPage() {
             ai_predictions: m.ai_predictions ? (Array.isArray(m.ai_predictions) ? m.ai_predictions[0] : m.ai_predictions) : null
           }));
           setMatches(formatted as Match[]);
+        } else {
+          setMatches(MOCK_MATCHES.filter(m => m.league === activeLeague));
         }
       } catch (err) {
         console.error('Error fetching matches:', err);
+        setMatches(MOCK_MATCHES.filter(m => m.league === activeLeague));
       } finally {
         setLoading(false);
       }
@@ -241,11 +180,12 @@ export default function MatchesPage() {
                   {/* SCORELINE */}
                   <div className="flex items-center justify-between gap-2 py-2">
                     <div className="flex flex-col items-center gap-2 w-5/12 text-center">
-                      <img 
-                        src={match.home_team?.logo_url} 
-                        alt={match.home_team?.name} 
-                        className="w-10 h-10 object-contain"
-                        onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+                      <Image 
+                        src={match.home_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                        alt={match.home_team?.name || 'Home Team'} 
+                        width={40}
+                        height={40}
+                        className="object-contain animate-fade-in"
                       />
                       <span className="font-bold text-xs max-w-[120px] truncate text-text-custom">
                         {match.home_team?.name}
@@ -265,11 +205,12 @@ export default function MatchesPage() {
                     </div>
 
                     <div className="flex flex-col items-center gap-2 w-5/12 text-center">
-                      <img 
-                        src={match.away_team?.logo_url} 
-                        alt={match.away_team?.name} 
-                        className="w-10 h-10 object-contain"
-                        onError={(e) => { e.currentTarget.src = 'https://crests.football-data.org/placeholder.png'; }}
+                      <Image 
+                        src={match.away_team?.logo_url || 'https://crests.football-data.org/placeholder.png'} 
+                        alt={match.away_team?.name || 'Away Team'} 
+                        width={40}
+                        height={40}
+                        className="object-contain animate-fade-in"
                       />
                       <span className="font-bold text-xs max-w-[120px] truncate text-text-custom">
                         {match.away_team?.name}
@@ -329,9 +270,7 @@ export default function MatchesPage() {
       )}
 
       {/* FOOTER */}
-      <footer className="mt-8 text-center text-xs text-secondary">
-        <p>© 2026 PantauBola Pro Portfolio. Developed by Nurfajar Naufal.</p>
-      </footer>
+      <Footer />
     </div>
   );
 }

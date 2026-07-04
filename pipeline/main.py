@@ -9,6 +9,7 @@ from pipeline.supabase_db import SupabaseDB
 from pipeline.poisson import calculate_poisson_probabilities
 from pipeline.gemini import GeminiClient
 from pipeline.understat_scraper import UnderstatScraper
+from pipeline.telegram_notifier import send_telegram_message
 
 def get_team_form_string(team_id, recent_matches):
     """
@@ -45,6 +46,7 @@ def get_team_form_string(team_id, recent_matches):
 
 def run_pipeline():
     print("=== MEMULAI PIPELINE DATA PANTAUBOLA ===")
+    send_telegram_message("⏳ <b>[PantauBola Pipeline]</b> Memulai sinkronisasi data dan pembuatan prediksi AI...")
     
     # Inisialisasi API, DB, dan Gemini
     try:
@@ -52,8 +54,13 @@ def run_pipeline():
         db = SupabaseDB()
         gemini = GeminiClient()
     except Exception as e:
-        print(f"Error inisialisasi client: {e}")
+        err_msg = f"❌ <b>[PantauBola Pipeline - CRITICAL]</b> Gagal inisialisasi client: {e}"
+        print(err_msg)
+        send_telegram_message(err_msg)
         return
+
+    processed_leagues = []
+    total_predictions_made = 0
 
     for league_code, league_name in SUPPORTED_LEAGUES.items():
         print(f"\nProcessing {league_name} ({league_code})...")
@@ -68,7 +75,9 @@ def run_pipeline():
             db.upsert_standings(standings)
             print("Data tim dan klasemen berhasil di-upsert ke Supabase.")
         except Exception as e:
-            print(f"Gagal memproses data tim & klasemen liga {league_code}: {e}")
+            err_msg = f"⚠️ <b>[PantauBola Pipeline]</b> Gagal memproses data tim & klasemen liga {league_name}: {e}"
+            print(err_msg)
+            send_telegram_message(err_msg)
             continue
             
         # 2. Tarik Seluruh Matchday Liga dari API
@@ -98,7 +107,7 @@ def run_pipeline():
                         "name": f"Team ID {tid}",
                         "logo_url": "https://crests.football-data.org/placeholder.png",
                         "league": league_code
-                    })
+                     })
                 db.upsert_teams(dummy_teams)
             
             # Simpan ke Database
@@ -112,7 +121,9 @@ def run_pipeline():
             except Exception as e:
                 print(f"Gagal melakukan scraping xG untuk liga {league_code}: {e}")
         except Exception as e:
-            print(f"Gagal memproses matches liga {league_code}: {e}")
+            err_msg = f"⚠️ <b>[PantauBola Pipeline]</b> Gagal memproses matches liga {league_name}: {e}"
+            print(err_msg)
+            send_telegram_message(err_msg)
             continue
 
         # 3. Proses Prediksi AI untuk Laga Mendatang (SCHEDULED / POSTPONED)
@@ -190,15 +201,29 @@ def run_pipeline():
                 }
                 
                 db.upsert_prediction(prediction_record)
+                total_predictions_made += 1
                 print(f"     [OK] Prediksi berhasil disimpan. Skor AI: {ai_analysis['prediksi_skor']['home']} - {ai_analysis['prediksi_skor']['away']}.")
                 
                 # Delay singkat antar pemanggilan Gemini API untuk keselamatan rate limit
                 time.sleep(1.5)
                 
         except Exception as e:
-            print(f"Error saat menghitung prediksi liga {league_code}: {e}")
+            err_msg = f"⚠️ <b>[PantauBola Pipeline]</b> Gagal kalkulasi prediksi liga {league_name}: {e}"
+            print(err_msg)
+            send_telegram_message(err_msg)
+            continue
+            
+        processed_leagues.append(league_name)
 
+    # Kirim status sukses akhir ke Telegram
+    success_summary = (
+        f"✅ <b>[PantauBola Pipeline - Sukses]</b>\n"
+        f"- Liga diproses: {', '.join(processed_leagues)}\n"
+        f"- Prediksi AI Baru: {total_predictions_made} laga\n"
+        f"- Status: OK"
+    )
     print("\n=== PIPELINE SELESAI DENGAN SUKSES ===")
+    send_telegram_message(success_summary)
 
 if __name__ == "__main__":
     run_pipeline()

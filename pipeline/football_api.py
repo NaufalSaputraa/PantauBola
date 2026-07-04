@@ -9,27 +9,43 @@ class FootballAPI:
         self.headers = {"X-Auth-Token": FOOTBALL_DATA_API_KEY}
         self.base_url = "https://api.football-data.org/v4"
 
-    def _get(self, endpoint):
+    def _get(self, endpoint, max_retries=3):
         """
         Melakukan GET request dengan penanganan rate limit.
         """
         url = f"{self.base_url}/{endpoint}"
-        print(f"Mengambil data dari API: {url}...")
+        retries = 0
         
-        # Jeda waktu sebelum request untuk menghindari HTTP 429 Rate Limit
-        time.sleep(API_DELAY_SECONDS)
-        
-        response = requests.get(url, headers=self.headers)
-        
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 429:
-            print("WARNING: Terkena Rate Limit (HTTP 429). Menunggu 30 detik...")
-            time.sleep(30)
-            return self._get(endpoint)
-        else:
-            print(f"Error {response.status_code} saat mengambil {url}: {response.text}")
-            response.raise_for_status()
+        while retries <= max_retries:
+            print(f"Mengambil data dari API (Percobaan {retries + 1}/{max_retries + 1}): {url}...")
+            
+            # Jeda waktu sebelum request untuk menghindari HTTP 429 Rate Limit
+            time.sleep(API_DELAY_SECONDS)
+            
+            try:
+                response = requests.get(url, headers=self.headers)
+            except Exception as e:
+                print(f"Network error: {e}")
+                retries += 1
+                if retries <= max_retries:
+                    time.sleep(5)
+                    continue
+                raise
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 429:
+                retries += 1
+                if retries <= max_retries:
+                    wait_time = 30 * retries  # Backoff: 30s, 60s, 90s...
+                    print(f"WARNING: Terkena Rate Limit (HTTP 429). Menunggu {wait_time} detik sebelum mencoba kembali...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"Error HTTP 429: Batas maksimal retry ({max_retries}) tercapai.")
+                    response.raise_for_status()
+            else:
+                print(f"Error {response.status_code} saat mengambil {url}: {response.text}")
+                response.raise_for_status()
 
     def get_standings_and_teams(self, league_code):
         """
