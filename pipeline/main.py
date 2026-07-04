@@ -99,16 +99,19 @@ def run_pipeline():
             # Cari id tim baru yang tidak ada di standings tetapi ada di matches
             missing_team_ids = match_team_ids - existing_team_ids
             if missing_team_ids:
-                print(f"Menemukan {len(missing_team_ids)} tim dari jadwal matches yang tidak ada di standings. Membuat data dummy...")
-                dummy_teams = []
+                print(f"Menemukan {len(missing_team_ids)} tim dari jadwal matches yang tidak ada di standings. Menarik detail dari API...")
+                fetched_teams = []
                 for tid in missing_team_ids:
-                    dummy_teams.append({
+                    team_details = api.get_team_details(tid)
+                    fetched_teams.append({
                         "id": tid,
-                        "name": f"Team ID {tid}",
-                        "logo_url": "https://crests.football-data.org/placeholder.png",
+                        "name": team_details["name"],
+                        "logo_url": team_details["logo_url"] or "https://crests.football-data.org/placeholder.png",
                         "league": league_code
                      })
-                db.upsert_teams(dummy_teams)
+                    # Jeda singkat agar tidak terkena rate limit
+                    time.sleep(1.5)
+                db.upsert_teams(fetched_teams)
             
             # Simpan ke Database
             db.upsert_matches(matches)

@@ -52,7 +52,7 @@ class FootballAPI:
         Mengambil klasemen liga, yang juga menyertakan detail data tim.
         Endpoint: /v4/competitions/{league_code}/standings
         """
-        data = self._get(f"competitions/{league_code}/standings")
+        data = self._get(f"competitions/{league_code}/standings?season=2025")
         
         teams = []
         standings = []
@@ -86,12 +86,32 @@ class FootballAPI:
                     
         return teams, standings
 
+    def get_team_details(self, team_id):
+        """
+        Mengambil detail informasi tim (nama, logo) secara dinamis dari API.
+        Endpoint: /v4/teams/{team_id}
+        """
+        try:
+            data = self._get(f"teams/{team_id}")
+            return {
+                "id": team_id,
+                "name": data.get("name", f"Team ID {team_id}"),
+                "logo_url": data.get("crest")
+            }
+        except Exception as e:
+            print(f"Gagal mengambil detail tim {team_id} dari API: {e}")
+            return {
+                "id": team_id,
+                "name": f"Team ID {team_id}",
+                "logo_url": None
+            }
+
     def get_matches(self, league_code):
         """
         Mengambil semua jadwal pertandingan (dan hasil skor jika sudah tanding) dalam satu musim.
         Endpoint: /v4/competitions/{league_code}/matches
         """
-        data = self._get(f"competitions/{league_code}/matches")
+        data = self._get(f"competitions/{league_code}/matches?season=2025")
         
         # Ekstrak tahun awal musim secara dinamis (misal: 2025 dari 2025-08-11)
         season_year = 2025  # Fallback default
