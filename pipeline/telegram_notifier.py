@@ -1,11 +1,16 @@
 import os
+import sys
 import urllib.request
 import urllib.parse
 import json
 from dotenv import load_dotenv
 
-# Muat file .env dari folder root
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+# Muat file .env secara absolut dari root folder proyek, lalu cari ke atas dari CWD sebagai cadangan
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+is_testing = "unittest" in sys.modules or "pytest" in sys.modules
+load_dotenv(dotenv_path=env_path, override=not is_testing)
+if not os.getenv("TELEGRAM_BOT_TOKEN"):
+    load_dotenv(override=not is_testing)
 
 def send_telegram_message(message: str) -> bool:
     """
